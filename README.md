@@ -147,6 +147,7 @@ Important:
 - Keep all secrets in environment variables.
 - Do not commit `.env`.
 - Make sure the backend can reach the Postgres host and Qdrant host.
+- Pin Python to 3.11 on Render using `runtime.txt` so package installs do not try to build for Python 3.14.
 
 ## Push to GitHub
 
@@ -198,4 +199,3 @@ git push -u origin main
 - If you update the backend configuration or database settings, restart the backend.
 - If you use Docker locally, make sure ports `80`, `8000`, and `6333` are free.
 - For demos, keep a few PDF files in `data/` so ingestion has content to index.
-
