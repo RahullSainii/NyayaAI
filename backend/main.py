@@ -6,7 +6,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from backend.config import DATA_DIR
+from backend.config import DATA_DIR, FRONTEND_ORIGIN, FRONTEND_ORIGINS
 from backend.models import ChatRequest, MapResponse, IngestResponse, HealthResponse
 from backend.ipc_bns_map import get_bns_mapping
 from backend.ingestion import ingest_pdfs
@@ -38,15 +38,31 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+]
+
+if FRONTEND_ORIGIN:
+    allowed_origins.append(FRONTEND_ORIGIN)
+
+allowed_origins.extend(FRONTEND_ORIGINS)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(auth_router)
+
+
+@app.get("/")
+async def root():
+    return {"name": "NyayaAI", "status": "ok", "docs": "/docs"}
 
 
 @app.get("/health", response_model=HealthResponse)

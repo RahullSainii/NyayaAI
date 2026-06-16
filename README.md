@@ -142,6 +142,35 @@ Recommended free deployment setup:
 - Database: Neon Postgres
 - Vector DB: Qdrant Cloud or a separate hosted Qdrant instance
 
+Backend Render settings:
+
+```text
+Environment: Docker
+Dockerfile Path: Dockerfile.backend
+Root Directory: leave blank
+```
+
+Frontend Render settings:
+
+```text
+Environment: Static Site
+Root Directory: frontend
+Build Command: npm install && npm run build
+Publish Directory: dist
+```
+
+Frontend environment variable:
+
+```env
+VITE_API_BASE_URL=https://your-backend.onrender.com
+```
+
+Backend environment variable for CORS:
+
+```env
+FRONTEND_ORIGIN=https://your-frontend.onrender.com
+```
+
 Important:
 
 - Keep all secrets in environment variables.

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ChatBubble from '../components/ChatBubble'
 import TypingIndicator from '../components/TypingIndicator'
+import { apiUrl } from '../lib/api'
 
 const WELCOME_MESSAGE = {
   role: 'ai',
@@ -77,7 +78,7 @@ function Chat() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('/chat', {
+      const response = await fetch(apiUrl('/chat'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

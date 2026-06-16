@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Navbar from '../components/Navbar'
 import SectionCard from '../components/SectionCard'
 import MappingDrawer from '../components/MappingDrawer'
+import { apiUrl } from '../lib/api'
 
 const SAMPLE_SECTIONS = [
   {
@@ -120,7 +121,9 @@ function Mapping() {
     setError('')
 
     try {
-      const response = await fetch(`/map?ipc=${encodeURIComponent(ipcSection)}`)
+      const response = await fetch(
+        apiUrl(`/map?ipc=${encodeURIComponent(ipcSection)}`),
+      )
 
       if (!response.ok) {
         throw new Error(`Mapping request failed with status ${response.status}`)
