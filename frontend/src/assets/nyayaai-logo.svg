@@ -1,0 +1,36 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="96" fill="#F6F0E1"/>
+  <rect x="32" y="32" width="448" height="448" rx="80" fill="url(#bgGlow)"/>
+  <path d="M145 212H255" stroke="#123A69" stroke-width="14" stroke-linecap="round"/>
+  <path d="M200 142V292" stroke="#123A69" stroke-width="14" stroke-linecap="round"/>
+  <path d="M170 212L135 260" stroke="#123A69" stroke-width="10" stroke-linecap="round"/>
+  <path d="M230 212L265 260" stroke="#123A69" stroke-width="10" stroke-linecap="round"/>
+  <path d="M135 260C135 284 154 302 178 302C202 302 221 284 221 260H135Z" fill="#E0B54A"/>
+  <path d="M265 260C265 284 284 302 308 302C332 302 351 284 351 260H265Z" fill="#E0B54A"/>
+  <path d="M170 212L178 260" stroke="#123A69" stroke-width="8"/>
+  <path d="M230 212L221 260" stroke="#123A69" stroke-width="8"/>
+  <path d="M200 292L176 338H224L200 292Z" fill="#E0B54A"/>
+  <rect x="184" y="338" width="32" height="52" rx="12" fill="#123A69"/>
+  <rect x="160" y="390" width="80" height="16" rx="8" fill="#123A69"/>
+  <path d="M287 152C287 133.222 302.222 118 321 118H373C391.778 118 407 133.222 407 152V250C407 268.778 391.778 284 373 284H341L313 310V284H321C302.222 284 287 268.778 287 250V152Z" fill="#123A69"/>
+  <path d="M321 180L336 165L352 180" stroke="#E0B54A" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M338 165L338 238" stroke="#E0B54A" stroke-width="8" stroke-linecap="round"/>
+  <path d="M357 206H375" stroke="#E0B54A" stroke-width="8" stroke-linecap="round"/>
+  <path d="M366 197V215" stroke="#E0B54A" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="294" cy="187" r="8" fill="#E0B54A"/>
+  <circle cx="417" cy="182" r="8" fill="#E0B54A"/>
+  <circle cx="294" cy="238" r="8" fill="#E0B54A"/>
+  <circle cx="415" cy="236" r="8" fill="#E0B54A"/>
+  <path d="M294 187L316 174" stroke="#E0B54A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M415 182L385 182" stroke="#E0B54A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M294 238L318 226" stroke="#E0B54A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M415 236L385 226" stroke="#E0B54A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M82 96L103 85L120 98" stroke="#E0B54A" stroke-width="8" stroke-linecap="round"/>
+  <path d="M410 103L435 89L450 105" stroke="#E0B54A" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="bgGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 190) rotate(90) scale(260)">
+      <stop stop-color="#FFF8EA"/>
+      <stop offset="1" stop-color="#F3E7C8"/>
+    </radialGradient>
+  </defs>
+</svg>
