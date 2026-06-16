@@ -122,7 +122,6 @@ async def stream_response(
     law_filter: str = "ALL",
     confidence: str = "LOW",
 ) -> AsyncGenerator[str, None]:
-    client = _get_client()
     context = _build_context(chunks)
 
     user_message = f"""Based on the following legal sections, answer the user's question.
@@ -139,12 +138,13 @@ Provide a clear, citizen-friendly answer with proper citations."""
         {"role": "user", "content": user_message},
     ]
 
-    if client is None:
-        async for token in _fallback_stream(query, chunks, confidence):
-            yield token
-        return
-
     try:
+        client = _get_client()
+        if client is None:
+            async for token in _fallback_stream(query, chunks, confidence):
+                yield token
+            return
+
         stream = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=messages,
