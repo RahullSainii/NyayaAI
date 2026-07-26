@@ -10,9 +10,9 @@ dist/
 venv/
 .venv/
 
-# Parsed PDF chunk cache (regenerated on startup)
-data/.chunk_cache.json
-*.chunk_cache.json
+# NOTE: data/.chunk_cache.json is intentionally committed so hosts with tight
+# memory (e.g. Render free tier) load chunks from cache instead of re-parsing
+# every PDF with pdfplumber at startup (which can OOM).
 
 # User store and local DB (contain user data / password hashes)
 backend/users.json

@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import hashlib
 import logging
 from typing import List, Dict, Optional
 
@@ -22,12 +23,20 @@ from backend.ipc_bns_map import detect_law_type
 logger = logging.getLogger(__name__)
 
 # Bump when the parsing logic changes so old caches are invalidated.
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 
 
-def _file_signature(filepath: str) -> Dict[str, int]:
+def _file_signature(filepath: str) -> Dict[str, object]:
+    """Content-based signature (size + md5) so a prebuilt cache stays valid across
+    machines and deploys. mtime is intentionally NOT used: git/Docker checkouts
+    reset file mtimes, which would wrongly invalidate a committed cache and force
+    an expensive (memory-heavy) re-parse on hosts like Render."""
     stat = os.stat(filepath)
-    return {"size": stat.st_size, "mtime": int(stat.st_mtime)}
+    md5 = hashlib.md5()
+    with open(filepath, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            md5.update(block)
+    return {"size": stat.st_size, "md5": md5.hexdigest()}
 
 
 def _load_parse_cache() -> Dict:
@@ -83,12 +92,22 @@ def _parse_pdf(filepath: str) -> List[LegalChunk]:
     filename = os.path.basename(filepath)
     try:
         with pdfplumber.open(filepath) as pdf:
-            full_text = ""
+            text_parts = []
             page_map = []
             for i, page in enumerate(pdf.pages):
                 text = page.extract_text() or ""
-                full_text += text + "\n"
+                text_parts.append(text)
                 page_map.extend([i + 1] * (text.count("\n") + 1))
+                # Release per-page cached objects so memory doesn't accumulate
+                # across a large document (pdfminer caches page layout/fonts).
+                page.flush_cache()
+                if hasattr(page, "get_textmap"):
+                    try:
+                        page.get_textmap.cache_clear()
+                    except Exception:
+                        pass
+            full_text = "\n".join(text_parts) + "\n"
+            del text_parts
 
             sections = list(SECTION_PATTERN.finditer(full_text))
             law_type = detect_law_type(full_text)
