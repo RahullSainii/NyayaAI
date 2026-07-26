@@ -165,10 +165,12 @@ export default function AetherHero({
     // Clear color
     gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
 
-    // Size & DPR
+    // Size & DPR. Measure the parent section (the canvas fills it via inset:0)
+    // so we always get the real rendered size, never a collapsed 0.
     const fit = () => {
       const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, dpr_max));
-      const rect = canvas.getBoundingClientRect();
+      const host = canvas.parentElement || canvas;
+      const rect = host.getBoundingClientRect();
       const cssW = Math.max(1, rect.width);
       const cssH = Math.max(1, rect.height);
       const W = Math.floor(cssW * dpr);
@@ -185,7 +187,7 @@ export default function AetherHero({
     setTimeout(fit, 200);
     const onResize = () => fit();
     const ro = new ResizeObserver(fit);
-    ro.observe(canvas);
+    ro.observe(canvas.parentElement || canvas);
     window.addEventListener('resize', onResize);
 
     // RAF
@@ -247,13 +249,19 @@ export default function AetherHero({
         role="img"
         aria-label={ariaLabel}
         style={{
+          /* Stretch via edge offsets (NOT height:100%) so the canvas fills the
+             section even when the section height is `auto` (e.g. the landing
+             hero). A percentage height against an auto-height parent collapses
+             to 0, which left the canvas invisible. */
           position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
           display: 'block',
           userSelect: 'none',
           touchAction: 'none',
+          zIndex: 0,
         }}
       />
 
