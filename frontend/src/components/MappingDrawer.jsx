@@ -1,143 +1,151 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { X, ArrowRight, Scale, Shield, Gavel } from 'lucide-react';
 
 export default function MappingDrawer({ section, onClose }) {
-  if (!section) return null;
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'auto';
+    };
+  }, [onClose]);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { 
+      opacity: 1,
+      transition: { 
+        staggerChildren: 0.1,
+        delayChildren: 0.2
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+  };
 
   return (
     <>
-      {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-navy/60 glass z-40"
+        className="fixed inset-0 z-40 bg-ink/70 backdrop-blur-sm"
+        aria-hidden="true"
       />
-
-      {/* Drawer */}
+      
       <motion.div
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed top-0 right-0 h-full w-full max-w-lg bg-surface border-l border-border z-50 flex flex-col"
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        className="fixed inset-y-0 right-0 z-50 w-full md:w-[480px] bg-surface-glass-strong border-l border-line shadow-2xl overflow-y-auto flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-muted-blue font-medium mb-1">
-              <span className="bg-muted-blue/10 px-2 py-0.5 rounded-md">
-                IPC §{section.ipcSection}
-              </span>
-              <svg className="w-3.5 h-3.5 text-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-              <span className="bg-gold/10 text-gold px-2 py-0.5 rounded-md">
-                BNS §{section.bnsSection}
-              </span>
+        <div className="p-6 md:p-8 flex-1">
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <span className="bg-fg-muted/10 text-fg px-3 py-1.5 rounded-md text-sm font-medium">
+                  IPC {section.ipcSection}
+                </span>
+                <ArrowRight className="w-4 h-4 text-gold" />
+                <span className="bg-gold-dim text-gold px-3 py-1.5 rounded-md text-sm font-medium shadow-[0_0_10px_rgba(255,215,0,0.1)]">
+                  BNS {section.bnsSection}
+                </span>
+              </div>
+              <h2 id="drawer-title" className="text-2xl font-display font-bold text-fg">
+                {section.ipcTitle}
+              </h2>
             </div>
-            <h2 className="font-heading text-xl font-bold text-text-primary">
-              {section.ipcTitle}
-            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-surface-2 text-fg-muted hover:text-fg transition-colors"
+              aria-label="Close drawer"
+            >
+              <X className="w-6 h-6" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="text-muted-blue hover:text-text-primary transition-colors p-2 rounded-xl hover:bg-card"
+
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-6"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+            <motion.div variants={itemVariants} className="bg-gradient-to-br from-gold-dim/40 to-transparent border border-gold-line/30 rounded-xl p-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-10">
+                <Scale className="w-16 h-16 text-gold" />
+              </div>
+              <div className="relative z-10">
+                <h3 className="text-sm font-semibold text-gold mb-2 uppercase tracking-wider flex items-center gap-2">
+                  <ArrowRight className="w-4 h-4" /> BNS Equivalent
+                </h3>
+                <p className="text-fg font-medium text-lg mb-1">{section.bnsTitle}</p>
+                {section.bnsSection === 'Not Found' && (
+                  <p className="text-sm text-fg-muted">This section currently has no exact mapping in BNS.</p>
+                )}
+              </div>
+            </motion.div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 chat-scroll">
-          {/* BNS Equivalent */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted-blue uppercase tracking-wider mb-2">
-              BNS Equivalent
-            </h3>
-            <div className="bg-card border border-border rounded-xl p-4">
-              <p className="text-gold font-heading text-lg font-semibold">
-                Section {section.bnsSection}
-              </p>
-              <p className="text-text-primary text-sm mt-1">{section.bnsTitle}</p>
-            </div>
-          </div>
-
-          {/* Punishment */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted-blue uppercase tracking-wider mb-2">
-              Punishment
-            </h3>
-            <div className="bg-card border border-border rounded-xl p-4">
-              <p className="text-text-primary text-sm leading-relaxed">
+            <motion.div variants={itemVariants} className="bg-surface border border-line rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-fg-muted mb-3 flex items-center gap-2">
+                <Gavel className="w-4 h-4" /> Punishment
+              </h3>
+              <p className="text-fg-subtle leading-relaxed">
                 {section.punishment}
               </p>
-            </div>
-          </div>
+            </motion.div>
 
-          {/* Classification */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted-blue uppercase tracking-wider mb-2">
-              Classification
-            </h3>
-            <div className="flex gap-3">
-              <div className={`flex-1 border rounded-xl p-4 text-center ${
-                section.cognizable
-                  ? 'bg-muted-blue/5 border-muted-blue/20'
-                  : 'bg-gold/5 border-gold/20'
-              }`}>
-                <p className={`text-sm font-semibold ${
-                  section.cognizable ? 'text-muted-blue' : 'text-gold'
-                }`}>
-                  {section.cognizable ? 'Cognizable' : 'Non-Cognizable'}
-                </p>
-                <p className="text-muted-blue/60 text-xs mt-1">
-                  {section.cognizable
-                    ? 'Police can arrest without warrant'
-                    : 'Warrant required for arrest'}
-                </p>
+            <motion.div variants={itemVariants} className="grid grid-cols-2 gap-4">
+              <div className={`border rounded-xl p-4 flex flex-col items-center justify-center text-center gap-2 transition-colors ${section.cognizable ? 'bg-red-500/5 border-red-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
+                <Shield className={`w-6 h-6 ${section.cognizable ? 'text-red-400' : 'text-green-400'}`} />
+                <div>
+                  <p className="text-xs text-fg-muted uppercase font-semibold mb-1">Nature</p>
+                  <p className={`text-sm font-medium ${section.cognizable ? 'text-red-400' : 'text-green-400'}`}>
+                    {section.cognizable ? 'Cognizable' : 'Non-Cognizable'}
+                  </p>
+                </div>
               </div>
-              <div className={`flex-1 border rounded-xl p-4 text-center ${
-                section.bailable
-                  ? 'bg-emerald-500/5 border-emerald-500/20'
-                  : 'bg-red-500/5 border-red-500/20'
-              }`}>
-                <p className={`text-sm font-semibold ${
-                  section.bailable ? 'text-emerald-400' : 'text-red-400'
-                }`}>
-                  {section.bailable ? 'Bailable' : 'Non-Bailable'}
-                </p>
-                <p className="text-muted-blue/60 text-xs mt-1">
-                  {section.bailable
-                    ? 'Bail is a right'
-                    : 'Bail at court discretion'}
-                </p>
+              <div className={`border rounded-xl p-4 flex flex-col items-center justify-center text-center gap-2 transition-colors ${section.bailable ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                <Scale className={`w-6 h-6 ${section.bailable ? 'text-green-400' : 'text-red-400'}`} />
+                <div>
+                  <p className="text-xs text-fg-muted uppercase font-semibold mb-1">Bail</p>
+                  <p className={`text-sm font-medium ${section.bailable ? 'text-green-400' : 'text-red-400'}`}>
+                    {section.bailable ? 'Bailable' : 'Non-Bailable'}
+                  </p>
+                </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
 
-          {/* Full Description */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted-blue uppercase tracking-wider mb-2">
-              Details
-            </h3>
-            <div className="bg-card border border-border rounded-xl p-4">
-              <p className="text-text-primary text-sm leading-relaxed">
+            <motion.div variants={itemVariants} className="bg-surface border border-line rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-fg-muted mb-3">Description</h3>
+              <p className="text-fg-subtle text-sm leading-relaxed">
                 {section.description}
               </p>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-border">
+        <div className="p-6 border-t border-line bg-surface/50 backdrop-blur-md">
           <button
             onClick={onClose}
-            className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 hover:border-muted-blue transition-all text-sm font-medium"
+            className="w-full py-3 px-4 bg-surface-2 hover:bg-surface-3 text-fg rounded-xl font-medium transition-colors"
           >
-            Close
+            Close Details
           </button>
         </div>
       </motion.div>

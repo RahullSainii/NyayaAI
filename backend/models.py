@@ -1,10 +1,33 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
+
+from backend.config import MAX_QUERY_CHARS, MAX_HISTORY_MESSAGES
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str = Field(..., max_length=MAX_QUERY_CHARS)
 
 
 class ChatRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=MAX_QUERY_CHARS)
     law_filter: str = "ALL"
+    history: Optional[List[ChatMessage]] = None
+
+    @field_validator("query")
+    @classmethod
+    def _query_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("query must not be empty")
+        return v
+
+    @field_validator("history")
+    @classmethod
+    def _cap_history(cls, v):
+        # Keep only the most recent turns to bound prompt size and cost.
+        if v and len(v) > MAX_HISTORY_MESSAGES:
+            return v[-MAX_HISTORY_MESSAGES:]
+        return v
 
 
 class Citation(BaseModel):

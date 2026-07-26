@@ -2,10 +2,11 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from backend.config import DATABASE_PATH, DATABASE_URL
+from backend.config import DATABASE_PATH, DATABASE_URL, DB_POOL_MIN, DB_POOL_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -144,43 +145,87 @@ def _split_statements(schema: str) -> List[str]:
     return [stmt.strip() for stmt in schema.split(";") if stmt.strip()]
 
 
-def get_connection():
-    if _use_postgres():
-        if psycopg2 is None:
-            raise RuntimeError("psycopg2 is not installed. Install psycopg2-binary to use Postgres.")
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-        conn.autocommit = False
-        return conn
+_pg_pool = None
+_pool_lock = threading.Lock()
 
-    _ensure_sqlite_directory()
-    conn = sqlite3.connect(DATABASE_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+
+def _init_pg_pool():
+    """Lazily create a thread-safe Postgres connection pool."""
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+    with _pool_lock:
+        if _pg_pool is None:
+            if psycopg2 is None:
+                raise RuntimeError("psycopg2 is not installed. Install psycopg2-binary to use Postgres.")
+            from psycopg2.pool import ThreadedConnectionPool
+            _pg_pool = ThreadedConnectionPool(
+                DB_POOL_MIN,
+                DB_POOL_MAX,
+                dsn=DATABASE_URL,
+                cursor_factory=RealDictCursor,
+            )
+            logger.info("Initialized Postgres connection pool (min=%s, max=%s).", DB_POOL_MIN, DB_POOL_MAX)
+    return _pg_pool
+
+
+@contextmanager
+def _connection():
+    """Yield a DB connection, committing on success and rolling back on error.
+
+    Postgres connections come from a pool and are returned to it (broken ones are
+    discarded so stale/closed connections don't get reused). SQLite opens/closes a
+    local file connection per call.
+    """
+    if _use_postgres():
+        pool = _init_pg_pool()
+        conn = pool.getconn()
+        # Discard a connection the server already closed (e.g. Neon idle timeout).
+        if getattr(conn, "closed", 0):
+            pool.putconn(conn, close=True)
+            conn = pool.getconn()
+        broken = False
+        try:
+            conn.autocommit = False
+            yield conn
+            conn.commit()
+        except Exception:
+            broken = True
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            pool.putconn(conn, close=broken)
+    else:
+        _ensure_sqlite_directory()
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 
 def initialize_database() -> None:
     """Create tables if they do not exist yet."""
     schema = POSTGRES_SCHEMA if _use_postgres() else SQLITE_SCHEMA
-    with get_connection() as conn:
+    with _connection() as conn:
         cur = conn.cursor()
         for stmt in _split_statements(schema):
             cur.execute(stmt)
-        conn.commit()
 
 
 @contextmanager
 def db_cursor():
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        yield conn, cur
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with _connection() as conn:
+        yield conn, conn.cursor()
 
 
 def _row_to_dict(row: Any) -> Optional[Dict[str, Any]]:
@@ -192,34 +237,30 @@ def _row_to_dict(row: Any) -> Optional[Dict[str, Any]]:
 
 
 def fetch_one(query: str, params: Iterable[Any] = ()) -> Optional[Dict[str, Any]]:
-    with get_connection() as conn:
+    with _connection() as conn:
         cur = conn.cursor()
         cur.execute(_normalize_query(query), tuple(params))
         return _row_to_dict(cur.fetchone())
 
 
 def fetch_all(query: str, params: Iterable[Any] = ()) -> List[Dict[str, Any]]:
-    with get_connection() as conn:
+    with _connection() as conn:
         cur = conn.cursor()
         cur.execute(_normalize_query(query), tuple(params))
         return [_row_to_dict(row) for row in cur.fetchall()]
 
 
 def execute(query: str, params: Iterable[Any] = ()) -> int:
-    with get_connection() as conn:
+    with _connection() as conn:
         cur = conn.cursor()
         prepared = _normalize_query(query)
         if _use_postgres() and query.lstrip().upper().startswith("INSERT") and "RETURNING" not in query.upper():
             prepared = f"{prepared.rstrip(';')} RETURNING id"
             cur.execute(prepared, tuple(params))
             row = cur.fetchone()
-            conn.commit()
-            if row is None:
-                return 0
-            return int(row["id"])
+            return int(row["id"]) if row else 0
 
         cur.execute(prepared, tuple(params))
-        conn.commit()
         return int(getattr(cur, "lastrowid", 0) or 0)
 
 
@@ -296,6 +337,33 @@ def insert_chunk(
         """,
         (document_id, section_number, page_number, chunk_text, qdrant_point_id),
     )
+
+
+def insert_chunks_bulk(
+    document_id: int,
+    chunks: Iterable[Tuple[str, int, str]],
+) -> None:
+    """Insert many chunks for a document over a single connection.
+
+    Each item is (section_number, page_number, chunk_text). This avoids opening
+    a fresh (potentially cross-region) DB connection per chunk during ingestion.
+    """
+    rows = [
+        (document_id, section_number, page_number, chunk_text, None)
+        for section_number, page_number, chunk_text in chunks
+    ]
+    if not rows:
+        return
+
+    query = _normalize_query(
+        """
+        INSERT INTO chunks (document_id, section_number, page_number, chunk_text, qdrant_point_id)
+        VALUES (?, ?, ?, ?, ?)
+        """
+    )
+    with _connection() as conn:
+        cur = conn.cursor()
+        cur.executemany(query, rows)
 
 
 def get_document_by_filename(filename: str, file_path: Optional[str] = None) -> Optional[Dict[str, Any]]:

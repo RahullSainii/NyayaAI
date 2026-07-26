@@ -39,6 +39,30 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  const googleLoginSuccess = (userData, tokenStr) => {
+    setUser(userData);
+    setToken(tokenStr);
+    localStorage.setItem('nyayaai_token', tokenStr);
+    localStorage.setItem('nyayaai_user', JSON.stringify(userData));
+  };
+
+  // Exchange a Google access token for our own backend-issued JWT.
+  const loginWithGoogle = async (accessToken) => {
+    const res = await fetch(apiUrl('/auth/google'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: accessToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Google sign-in failed');
+
+    setUser(data.user);
+    setToken(data.token);
+    localStorage.setItem('nyayaai_token', data.token);
+    localStorage.setItem('nyayaai_user', JSON.stringify(data.user));
+    return data;
+  };
+
   const register = async (name, email, password) => {
     const res = await fetch(apiUrl('/auth/register'), {
       method: 'POST',
@@ -86,6 +110,8 @@ export function AuthProvider({ children }) {
       isAuthenticated: !!token && !!user,
       loading,
       login,
+      googleLoginSuccess,
+      loginWithGoogle,
       register,
       forgotPassword,
       resetPassword,

@@ -1,18 +1,22 @@
 import json
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import aiosmtplib
 import bcrypt
+import httpx
 import jwt
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from backend.config import (
     EMAIL_FROM,
+    FRONTEND_ORIGIN,
     JWT_ALGORITHM,
     JWT_EXPIRATION_HOURS,
     JWT_SECRET,
@@ -23,6 +27,12 @@ from backend.config import (
     SMTP_SECURE,
     SMTP_USER,
     USERS_FILE,
+)
+from backend.rate_limit import (
+    forgot_password_rate_limit,
+    login_rate_limit,
+    register_rate_limit,
+    reset_password_rate_limit,
 )
 from backend.db import (
     create_or_replace_user,
@@ -54,6 +64,10 @@ class LoginRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: str
+
+
+class GoogleLoginRequest(BaseModel):
+    access_token: str
 
 
 class ResetPasswordRequest(BaseModel):
@@ -151,9 +165,21 @@ def _verify_token(token: str) -> str:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
+# Bearer-token auth dependency for protecting endpoints.
+_bearer_scheme = HTTPBearer(auto_error=True)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> str:
+    """FastAPI dependency: require a valid JWT and return the user's email."""
+    return _verify_token(credentials.credentials)
+
+
 async def _send_reset_email(to_email: str, reset_token: str) -> None:
     """Send password reset email via SMTP."""
-    reset_link = f"http://localhost:5173/reset-password?token={reset_token}"
+    base_url = (FRONTEND_ORIGIN or "http://localhost:5173").rstrip("/")
+    reset_link = f"{base_url}/reset-password?token={reset_token}"
 
     html_body = f"""
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: linear-gradient(180deg, #07101d 0%, #0f1828 100%); border-radius: 16px; overflow: hidden;">
@@ -199,7 +225,7 @@ async def _send_reset_email(to_email: str, reset_token: str) -> None:
     )
 
 
-@router.post("/register", response_model=AuthResponse)
+@router.post("/register", response_model=AuthResponse, dependencies=[Depends(register_rate_limit)])
 async def register(req: RegisterRequest):
     if not req.name or not req.email or not req.password:
         raise HTTPException(status_code=400, detail="All fields are required")
@@ -237,7 +263,7 @@ async def register(req: RegisterRequest):
     return AuthResponse(message="Account created successfully. Please log in.")
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse, dependencies=[Depends(login_rate_limit)])
 async def login(req: LoginRequest):
     email_lower = req.email.lower().strip()
     user = None
@@ -261,7 +287,71 @@ async def login(req: LoginRequest):
     )
 
 
-@router.post("/forgot-password", response_model=AuthResponse)
+@router.post("/google", response_model=LoginResponse, dependencies=[Depends(login_rate_limit)])
+async def google_login(req: GoogleLoginRequest):
+    """Verify a Google OAuth access token, provision the user, and issue our JWT.
+
+    The frontend uses Google's implicit flow which yields an access_token; we
+    validate it (and fetch the profile) via Google's userinfo endpoint rather
+    than trusting client-supplied identity.
+    """
+    if not req.access_token:
+        raise HTTPException(status_code=400, detail="Missing Google access token")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {req.access_token}"},
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Google userinfo request failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not reach Google to verify sign-in")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired Google sign-in")
+
+    info = resp.json()
+    email = (info.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Google account did not provide an email")
+    if info.get("email_verified") is False:
+        raise HTTPException(status_code=401, detail="Google email is not verified")
+
+    name = (info.get("name") or email.split("@")[0]).strip()
+
+    # Provision the user without touching an existing password-based account.
+    try:
+        _ensure_db_ready()
+        existing = get_user_by_email(email)
+        if not existing:
+            # Google users authenticate via Google; store an unusable random hash.
+            create_or_replace_user(name, email, _hash_password(secrets.token_urlsafe(32)))
+            display_name = name
+        else:
+            display_name = existing.get("name") or name
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("SQLite google-login provisioning failed, using JSON store: %s", exc)
+        users = _read_users()
+        if email not in users:
+            users[email] = {
+                "name": name,
+                "email": email,
+                "password_hash": _hash_password(secrets.token_urlsafe(32)),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            _write_users(users)
+            display_name = name
+        else:
+            display_name = users[email].get("name") or name
+
+    token = _create_token(email)
+    return LoginResponse(token=token, user={"name": display_name, "email": email})
+
+
+@router.post("/forgot-password", response_model=AuthResponse, dependencies=[Depends(forgot_password_rate_limit)])
 async def forgot_password(req: ForgotPasswordRequest):
     email_lower = req.email.lower().strip()
     user = None
@@ -283,7 +373,7 @@ async def forgot_password(req: ForgotPasswordRequest):
     return AuthResponse(message="If an account with that email exists, we've sent a password reset link.")
 
 
-@router.post("/reset-password", response_model=AuthResponse)
+@router.post("/reset-password", response_model=AuthResponse, dependencies=[Depends(reset_password_rate_limit)])
 async def reset_password(req: ResetPasswordRequest):
     if len(req.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")

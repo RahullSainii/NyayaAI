@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import Navbar from '../components/Navbar'
-import SectionCard from '../components/SectionCard'
-import MappingDrawer from '../components/MappingDrawer'
-import { apiUrl } from '../lib/api'
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Scale, ArrowRight, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import Navbar from '../components/Navbar';
+import SectionCard from '../components/SectionCard';
+import MappingDrawer from '../components/MappingDrawer';
+import { apiUrl } from '../lib/api';
 
 const SAMPLE_SECTIONS = [
   {
@@ -107,6 +108,7 @@ function Mapping() {
   const [resultSection, setResultSection] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isFocused, setIsFocused] = useState(false)
 
   const runLookup = async (rawValue) => {
     const ipcSection = normalizeSectionInput(rawValue)
@@ -153,7 +155,7 @@ function Mapping() {
   }
 
   return (
-    <div className="min-h-screen bg-navy font-body">
+    <div className="min-h-screen bg-ink text-fg font-body">
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-6 pt-28 pb-16">
@@ -161,96 +163,135 @@ function Mapping() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
+          className="text-center md:text-left"
         >
-          <h1 className="text-4xl font-heading font-bold text-text-primary">
-            IPC to BNS Mapping
+          <h1 className="text-4xl md:text-5xl font-display font-bold text-fg">
+            IPC <span className="text-gold mx-2 inline-block"><ArrowRight className="inline w-8 h-8" /></span> BNS Mapping
           </h1>
-          <p className="text-muted-blue mt-3 text-lg max-w-2xl">
-            Enter an IPC section number to fetch its live BNS mapping from the
-            backend API.
+          <p className="text-fg-muted mt-4 text-lg md:text-xl font-body max-w-2xl">
+            Enter an IPC section number to fetch its live BNS mapping from the backend API.
           </p>
         </motion.div>
 
         <motion.form
           onSubmit={handleSubmit}
-          className="mt-8 max-w-3xl"
+          className="mt-10 max-w-3xl"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15 }}
         >
-          <div className="flex flex-col gap-3 md:flex-row">
-            <div className="relative flex-1">
-              <svg
-                className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-blue/50"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+          <div className="flex flex-col md:flex-row gap-4">
+            <div 
+              className={`relative flex-1 bg-surface-glass-strong rounded-xl border transition-all duration-300 ${isFocused ? 'border-gold-glow shadow-[0_0_15px_rgba(255,215,0,0.15)]' : 'border-line'}`}
+            >
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-fg-muted" />
+              <div className="relative">
+                <input
+                  type="text"
+                  id="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setIsFocused(false)}
+                  className="w-full bg-transparent pl-12 pr-4 pt-5 pb-2 text-fg focus:outline-none peer"
+                  placeholder=" "
                 />
-              </svg>
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Enter IPC section number, for example 302 or 498A"
-                className="bg-card border border-border rounded-xl pl-12 pr-5 py-3.5 w-full text-text-primary placeholder:text-muted-blue/50 focus:outline-none focus:border-muted-blue transition-colors text-base"
-              />
+                <label 
+                  htmlFor="search"
+                  className={`absolute left-12 text-fg-muted transition-all duration-200 pointer-events-none ${
+                    search || isFocused 
+                      ? 'top-1.5 text-xs'
+                      : 'top-1/2 -translate-y-1/2 text-base'
+                  }`}
+                >
+                  Enter IPC section (e.g., 302, 498A)
+                </label>
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="bg-gold text-navy px-6 py-3.5 rounded-xl font-semibold hover:bg-gold-hover transition-all disabled:opacity-60"
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-gold-dim to-gold text-ink px-8 py-3.5 rounded-xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
             >
-              {isLoading ? 'Searching...' : 'Find Mapping'}
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Find Mapping'}
             </button>
           </div>
         </motion.form>
 
         <motion.div
-          className="mt-6"
+          className="mt-8"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          <p className="text-xs font-semibold text-muted-blue uppercase tracking-wider mb-3">
+          <p className="text-sm font-semibold text-fg-muted uppercase tracking-wider mb-3">
             Quick picks
           </p>
           <div className="flex flex-wrap gap-3">
             {SAMPLE_SECTIONS.map((section) => (
-              <button
+              <motion.button
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.98 }}
                 key={section.id}
                 type="button"
                 onClick={() => handleQuickPick(section)}
-                className="bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 hover:border-muted-blue transition-all text-sm"
+                className="bg-surface border border-line text-fg rounded-lg px-4 py-2 hover:border-gold-line hover:shadow-[0_0_10px_rgba(255,215,0,0.1)] transition-all text-sm"
               >
                 IPC {section.ipcSection}
-              </button>
+              </motion.button>
             ))}
           </div>
         </motion.div>
 
         <motion.div
-          className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+          className="mt-12"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.3 }}
         >
-          <AnimatePresence mode="popLayout">
-            {resultSection && (
+          <AnimatePresence mode="wait">
+            {isLoading && (
               <motion.div
-                key={resultSection.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.25 }}
+                key="loading"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full max-w-3xl"
+              >
+                <div className="bg-surface border border-line rounded-xl p-6 shadow-sm animate-pulse">
+                  <div className="h-6 bg-line rounded w-1/3 mb-4"></div>
+                  <div className="h-8 bg-line rounded w-2/3 mb-4"></div>
+                  <div className="h-4 bg-line rounded w-1/4"></div>
+                </div>
+              </motion.div>
+            )}
+
+            {error && !isLoading && (
+              <motion.div
+                key="error"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full max-w-3xl"
+              >
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 flex flex-col items-center justify-center text-center gap-3">
+                  <AlertCircle className="w-8 h-8 text-red-400" />
+                  <p className="text-red-400">{error}</p>
+                  <button onClick={() => runLookup(search)} className="mt-2 text-sm text-red-300 hover:text-red-200 flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4" /> Retry
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {resultSection && !isLoading && !error && (
+              <motion.div
+                key="result"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full max-w-3xl"
               >
                 <SectionCard
                   section={resultSection}
@@ -258,27 +299,35 @@ function Mapping() {
                 />
               </motion.div>
             )}
+
+            {!resultSection && !isLoading && !error && (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="w-full"
+              >
+                <div className="bg-surface-glass-strong border border-line rounded-xl p-12 flex flex-col items-center justify-center text-center max-w-3xl mx-auto mb-12">
+                  <Scale className="w-12 h-12 text-fg-faint mb-4" />
+                  <p className="text-fg-subtle text-lg">Search an IPC section to view its BNS equivalent.</p>
+                </div>
+                
+                <div>
+                  <h3 className="text-xl font-display font-semibold text-fg mb-6">Sample Sections</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {SAMPLE_SECTIONS.map(section => (
+                      <SectionCard 
+                        key={section.id} 
+                        section={section} 
+                        onClick={() => setSelectedSection(section)} 
+                      />
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
-
-          {!resultSection && !isLoading && !error && (
-            <motion.p
-              className="col-span-full text-center text-muted-blue/70 py-16 text-lg"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              Search an IPC section to load its mapped BNS section.
-            </motion.p>
-          )}
-
-          {error && (
-            <motion.p
-              className="col-span-full text-center text-red-400 py-16 text-lg"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              {error}
-            </motion.p>
-          )}
         </motion.div>
       </main>
 
@@ -294,4 +343,4 @@ function Mapping() {
   )
 }
 
-export default Mapping
+export default Mapping;

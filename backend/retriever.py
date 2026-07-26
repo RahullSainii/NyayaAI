@@ -10,6 +10,7 @@ from backend.config import (
     QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, ENABLE_VECTOR_MODELS,
     EMBEDDING_MODEL, EMBEDDING_DIM, RERANKER_MODEL,
     BM25_WEIGHT, SEMANTIC_WEIGHT, TOP_K_MERGED, TOP_K_RERANKED,
+    RERANK_SCORE_FLOOR, MIN_TERM_COVERAGE,
 )
 from backend.models import LegalChunk
 from backend.ingestion import get_chunks, get_bm25_index, get_tokenized_corpus
@@ -248,7 +249,9 @@ async def hybrid_search(query: str, law_filter: str = "ALL") -> List[Dict]:
     semantic_norm = _normalize_scores(semantic_scores)
 
     merged = []
-    for idx, b_score, s_score in zip(all_indices, bm25_norm, semantic_norm):
+    for idx, b_score, s_score, raw_b, raw_s in zip(
+        all_indices, bm25_norm, semantic_norm, bm25_scores, semantic_scores
+    ):
         combined = BM25_WEIGHT * b_score + SEMANTIC_WEIGHT * s_score
         if idx < len(chunks):
             chunk = chunks[idx]
@@ -260,6 +263,8 @@ async def hybrid_search(query: str, law_filter: str = "ALL") -> List[Dict]:
                 "score": combined,
                 "bm25_score": b_score,
                 "semantic_score": s_score,
+                "raw_bm25_score": raw_b,
+                "raw_semantic_score": raw_s,
             })
 
     merged.sort(key=lambda x: x["score"], reverse=True)
@@ -300,6 +305,81 @@ def get_confidence(score: float) -> str:
     return "LOW"
 
 
+# Very common words that carry no topical signal. Kept small on purpose: the
+# goal is only to strip filler so term-coverage reflects the legal subject.
+_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "can", "do", "does",
+    "explain", "for", "from", "how", "i", "in", "is", "it", "its", "me", "my",
+    "of", "on", "or", "please", "the", "to", "was", "were", "what", "when",
+    "where", "which", "who", "why", "with", "you", "your", "about", "tell",
+    "give", "need", "want", "law", "legal", "act", "bill", "section", "india",
+    "indian",
+}
+
+
+def _meaningful_terms(query: str) -> List[str]:
+    tokens = re.findall(r"\b\w+\b", query.lower())
+    return [t for t in tokens if len(t) > 2 and t not in _STOPWORDS]
+
+
+def _term_coverage(query: str, chunks: List[Dict]) -> float:
+    """Fraction of meaningful query terms that appear in the retrieved context.
+
+    This is corpus-independent and works even in BM25-only mode (where the
+    combined score is min-max normalized and therefore not a reliable absolute
+    relevance signal). A question about a law we do not hold (e.g. Triple Talaq)
+    yields near-zero coverage, letting us flag it as out of scope.
+    """
+    terms = _meaningful_terms(query)
+    if not terms:
+        return 1.0  # nothing topical to match on; don't penalize
+    haystack = " ".join(c.get("text", "") for c in chunks).lower()
+    hits = sum(1 for t in set(terms) if t in haystack)
+    return hits / len(set(terms))
+
+
+def _relevance_coverage(query: str, chunks: List[Dict]) -> float:
+    """IDF-weighted term coverage: how much of the query's *distinctive* meaning
+    is actually present in the retrieved context.
+
+    Plain coverage treats every query word equally, so a question like
+    "triple talaq punishments for a person who married 6 times" passes the gate
+    just because generic words ("person", "married", "punishment") exist in the
+    penal code -- even though the defining term "talaq" appears nowhere in the
+    corpus. Weighting each term by its BM25 IDF fixes this: rare/defining terms
+    dominate, and a term absent from the entire corpus vocabulary (the strongest
+    out-of-scope signal) is weighted highest while never matching.
+    """
+    terms = list(set(_meaningful_terms(query)))
+    if not terms:
+        return 1.0
+
+    haystack = " ".join(c.get("text", "") for c in chunks).lower()
+
+    bm25 = get_bm25_index()
+    idf = getattr(bm25, "idf", None)
+    if not idf:
+        # No IDF available (e.g. vector-only mode) -> plain coverage.
+        hits = sum(1 for t in terms if t in haystack)
+        return hits / len(terms)
+
+    # A term missing from the whole corpus is maximally distinctive/important.
+    max_idf = max(idf.values())
+    absent_weight = max(max_idf, 1.0) * 1.5
+
+    matched_weight = 0.0
+    total_weight = 0.0
+    for t in terms:
+        weight = idf.get(t, absent_weight)
+        if weight <= 0:
+            weight = 0.01  # BM25 epsilon-corrected terms can be ~0; keep a floor
+        total_weight += weight
+        if t in haystack:
+            matched_weight += weight
+
+    return matched_weight / total_weight if total_weight else 1.0
+
+
 async def retrieve(query: str, law_filter: str = "ALL") -> Tuple[List[Dict], str]:
     try:
         await ensure_ready()
@@ -308,8 +388,28 @@ async def retrieve(query: str, law_filter: str = "ALL") -> Tuple[List[Dict], str
             return [], "LOW"
 
         reranked, top_score = rerank(query, candidates)
+
+        # Drop chunks that scored below the relevance floor so weak, off-topic
+        # material never reaches the LLM or gets shown as a citation.
+        score_key = "rerank_score" if reranked and "rerank_score" in reranked[0] else "score"
+        filtered = [c for c in reranked if c.get(score_key, 0.0) >= RERANK_SCORE_FLOOR]
+        if not filtered:
+            filtered = reranked[:1]  # keep the single best for confidence checks
+
+        # Out-of-scope detection: if the retrieved context barely shares the
+        # question's *distinctive* (rare) terms, treat it as unanswerable rather
+        # than answering from irrelevant sections. IDF weighting prevents generic
+        # words from masking a missing subject term (e.g. "talaq").
+        coverage = _relevance_coverage(query, filtered)
+        if coverage < MIN_TERM_COVERAGE:
+            logger.info(
+                "Query treated as out-of-scope (term coverage %.2f < %.2f): %s",
+                coverage, MIN_TERM_COVERAGE, query,
+            )
+            return [], "LOW"
+
         confidence = get_confidence(top_score)
-        return reranked, confidence
+        return filtered, confidence
     except Exception as exc:
         logger.warning("Retrieval failed, returning empty context: %s", exc)
         return [], "LOW"

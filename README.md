@@ -60,7 +60,9 @@ Create a `.env` file in the project root:
 
 ```env
 GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_MODEL=openai/gpt-oss-20b
+GEMINI_API_KEY=your_gemini_api_key
+LLM_FALLBACKS=gemini:gemini-flash-lite-latest,gemini:gemini-flash-latest,gemini:gemini-3.5-flash,gemini:gemini-2.0-flash,gemini:gemini-2.5-flash
 
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=
