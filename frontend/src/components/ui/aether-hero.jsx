@@ -108,20 +108,40 @@ export default function AetherHero({
     return prog;
   };
 
+  // Keep the latest shader props in refs so the GL init effect can run ONCE and
+  // never tears down/re-creates the context on unrelated parent re-renders
+  // (e.g. mouse-move state on the landing page). Re-creating the context on
+  // every render is what left the canvas blank in production builds.
+  const fragRef = useRef(fragmentSource);
+  const dprRef = useRef(dprMax);
+  const clearRef = useRef(clearColor);
+  fragRef.current = fragmentSource;
+  dprRef.current = dprMax;
+  clearRef.current = clearColor;
+
   // Init GL
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const gl = canvas.getContext('webgl2', { alpha: true, antialias: true });
-    if (!gl) return;
+    if (!gl) {
+      // WebGL2 unavailable -> leave the canvas transparent so the CSS aurora
+      // fallback shows through instead of a blank hero.
+      console.warn('AetherHero: WebGL2 not available; using CSS fallback background.');
+      return;
+    }
     glRef.current = gl;
+
+    const fragmentSrc = fragRef.current;
+    const dpr_max = dprRef.current;
+    const clear = clearRef.current;
 
     // Program
     let prog;
     try {
-      prog = createProgram(gl, VERT_SRC, fragmentSource);
+      prog = createProgram(gl, VERT_SRC, fragmentSrc);
     } catch (e) {
-      console.error(e);
+      console.error('AetherHero shader error:', e);
       return;
     }
     programRef.current = prog;
@@ -143,11 +163,11 @@ export default function AetherHero({
     uniResRef.current = gl.getUniformLocation(prog, 'resolution');
 
     // Clear color
-    gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+    gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
 
     // Size & DPR
     const fit = () => {
-      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, dprMax));
+      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, dpr_max));
       const rect = canvas.getBoundingClientRect();
       const cssW = Math.max(1, rect.width);
       const cssH = Math.max(1, rect.height);
@@ -159,6 +179,10 @@ export default function AetherHero({
       gl.viewport(0, 0, canvas.width, canvas.height);
     };
     fit();
+    // Re-fit after layout settles (the hero uses height:auto and animates its
+    // content in, so the first measure can be too small in a production build).
+    requestAnimationFrame(fit);
+    setTimeout(fit, 200);
     const onResize = () => fit();
     const ro = new ResizeObserver(fit);
     ro.observe(canvas);
@@ -184,7 +208,10 @@ export default function AetherHero({
       if (bufRef.current) gl.deleteBuffer(bufRef.current);
       if (programRef.current) gl.deleteProgram(programRef.current);
     };
-  }, [fragmentSource, dprMax, clearColor]);
+    // Init once: shader props are read from refs so unrelated parent re-renders
+    // don't destroy/recreate the WebGL context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
   const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
@@ -195,6 +222,24 @@ export default function AetherHero({
       style={{ height, position: 'relative', overflow: 'hidden' }}
       aria-label="Hero"
     >
+      {/* CSS aurora fallback (shows if WebGL2 is unavailable or the shader
+          fails to draw, so the hero is never blank). The shader canvas paints
+          opaquely on top of this when it works. */}
+      <div
+        aria-hidden="true"
+        className="aurora-fallback"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0,
+          background:
+            'radial-gradient(1200px 600px at 18% 12%, rgba(212,166,78,0.16), transparent 55%),' +
+            'radial-gradient(1000px 520px at 82% 88%, rgba(70,110,220,0.18), transparent 60%),' +
+            'radial-gradient(900px 500px at 60% 40%, rgba(150,90,220,0.10), transparent 60%),' +
+            'linear-gradient(180deg, #05070d 0%, #060910 100%)',
+        }}
+      />
+
       {/* Shader canvas (background) */}
       <canvas
         ref={canvasRef}
