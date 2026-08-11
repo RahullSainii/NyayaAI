@@ -13,6 +13,14 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=MAX_QUERY_CHARS)
     law_filter: str = "ALL"
     history: Optional[List[ChatMessage]] = None
+    # Text extracted from an attached document (separate from the query so large
+    # documents aren't constrained by the query length cap).
+    attachment_text: Optional[str] = Field(default=None, max_length=24000)
+    attachment_name: Optional[str] = Field(default=None, max_length=300)
+    # Base64-encoded image (screenshot/photo) for vision-capable analysis.
+    image_data: Optional[str] = Field(default=None, max_length=10_000_000)
+    image_mime: Optional[str] = Field(default=None, max_length=100)
+    image_name: Optional[str] = Field(default=None, max_length=300)
 
     @field_validator("query")
     @classmethod

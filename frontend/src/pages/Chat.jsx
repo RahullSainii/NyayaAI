@@ -4,19 +4,57 @@ import ChatBubble from '../components/ChatBubble'
 import TypingIndicator from '../components/TypingIndicator'
 import { apiUrl } from '../lib/api'
 import { Bot, Menu, MessageSquare, Plus, Send, Sparkles, X, ChevronLeft, Circle, Mic, MicOff } from 'lucide-react'
+import logo from '../assets/nyaya.jpeg'
 
 const WELCOME_MESSAGE = {
   role: 'ai',
+  welcome: true,
   content:
     "Namaste! I'm NyayaAI, your AI-powered Indian legal assistant. I can help you with:\n\n- IPC to BNS section mappings\n- Criminal law procedures\n- FIR filing guidance\n- CrPC provisions\n\nHow can I assist you today?",
   sources: [],
 }
 
+// Chat history is persisted to localStorage so previous conversations survive reloads.
+const CHATS_KEY = 'nyayaai_chats'
+
+function SessionMenuItem({ icon, label, onClick, danger }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+        danger ? 'text-red-400 hover:bg-red-500/10' : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
+      }`}
+    >
+      <span className="material-symbols-outlined text-[18px]">{icon}</span>
+      {label}
+    </button>
+  )
+}
+
+const loadPersistedChats = () => {
+  try {
+    const raw = localStorage.getItem(CHATS_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    if (!data || !Array.isArray(data.sessions)) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
 const DEFAULT_SESSIONS = [
-  { id: 1, title: 'IPC Section 302 Query', active: true },
-  { id: 2, title: 'FIR Filing Process', active: false },
-  { id: 3, title: 'Bail Provisions', active: false },
+  { id: 1, title: 'New Conversation', active: true },
 ]
+
+// The backend accepts text only, so we support attaching text-based documents
+// whose contents get included with the question.
+const ATTACHABLE_EXT = /\.(txt|md|markdown|csv|json|log|rtf|html?|xml|ya?ml)$/i
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|tiff?)$/i
+const MAX_ATTACH_CHARS = 20000        // per plain-text file (matches backend extract cap)
+const MAX_ATTACH_TEXT_CHARS = 24000   // combined attachment_text cap (matches backend)
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB
 
 const STREAMING_MESSAGE = {
   role: 'ai',
@@ -25,11 +63,24 @@ const STREAMING_MESSAGE = {
 }
 
 function Chat() {
-  const [messages, setMessages] = useState([WELCOME_MESSAGE])
+  const persistedChats = useRef(loadPersistedChats()).current
+  const [messages, setMessages] = useState(() => {
+    const active = (persistedChats?.sessions || []).find((s) => s.active)
+    if (active && persistedChats?.messages?.[active.id]?.length) {
+      return persistedChats.messages[active.id]
+    }
+    return [WELCOME_MESSAGE]
+  })
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [chatSessions, setChatSessions] = useState(DEFAULT_SESSIONS)
+  const [chatSessions, setChatSessions] = useState(
+    persistedChats?.sessions?.length ? persistedChats.sessions : DEFAULT_SESSIONS,
+  )
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [menu, setMenu] = useState(null) // { id, top, left } for the session "..." menu
+  const [renamingId, setRenamingId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
   const [disclaimerAck, setDisclaimerAck] = useState(() => {
     try {
       return localStorage.getItem('nyayaai_disclaimer_ack') === 'true'
@@ -37,7 +88,7 @@ function Chat() {
       return true
     }
   })
-  const sessionMessagesRef = useRef({})
+  const sessionMessagesRef = useRef(persistedChats?.messages ? { ...persistedChats.messages } : {})
 
   const acceptDisclaimer = () => {
     try {
@@ -55,10 +106,28 @@ function Chat() {
   const finalTranscriptRef = useRef('')
   const [isRecording, setIsRecording] = useState(false)
   const [recordingNotSupported, setRecordingNotSupported] = useState(false)
+  const fileInputRef = useRef(null)
+  const attachIdRef = useRef(0)
+  const [attachments, setAttachments] = useState([])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
+
+  // Persist sessions + their messages so chat history survives reloads. Skipped
+  // while streaming to avoid writing localStorage on every token.
+  useEffect(() => {
+    if (isLoading) return
+    const active = chatSessions.find((s) => s.active)
+    const map = { ...sessionMessagesRef.current }
+    if (active) map[active.id] = messages
+    sessionMessagesRef.current = map
+    try {
+      localStorage.setItem(CHATS_KEY, JSON.stringify({ sessions: chatSessions, messages: map }))
+    } catch {
+      /* storage full or unavailable */
+    }
+  }, [messages, chatSessions, isLoading])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -123,6 +192,12 @@ function Chat() {
 
   const activeSession = chatSessions.find((session) => session.active)
   const chatTitle = activeSession ? activeSession.title : 'New Conversation'
+  const nonArchived = chatSessions.filter((s) => !s.archived)
+  const recentSessions = [
+    ...nonArchived.filter((s) => s.pinned),
+    ...nonArchived.filter((s) => !s.pinned),
+  ]
+  const archivedSessions = chatSessions.filter((s) => s.archived)
 
   const handleSelectSession = (id) => {
     setChatSessions((prev) => {
@@ -164,6 +239,196 @@ function Chat() {
     }
   }
 
+  const handleDeleteSession = (id) => {
+    if (isLoading) return // don't delete while a response is streaming
+
+    const wasActive = chatSessions.find((s) => s.id === id)?.active
+    const remaining = chatSessions.filter((s) => s.id !== id)
+    const map = { ...sessionMessagesRef.current }
+    delete map[id]
+
+    if (remaining.length === 0) {
+      // Deleted the last one -> start fresh.
+      const newId = Date.now()
+      sessionMessagesRef.current = {}
+      setChatSessions([{ id: newId, title: 'New Conversation', active: true }])
+      setMessages([WELCOME_MESSAGE])
+      return
+    }
+
+    let nextSessions = remaining
+    if (wasActive) {
+      // Activate the first remaining session and load its messages.
+      nextSessions = remaining.map((s, i) => ({ ...s, active: i === 0 }))
+      const firstMsgs = map[nextSessions[0].id]
+      setMessages(firstMsgs && firstMsgs.length ? firstMsgs : [WELCOME_MESSAGE])
+    }
+    sessionMessagesRef.current = map
+    setChatSessions(nextSessions)
+  }
+
+  const openMenu = (event, id) => {
+    event.stopPropagation()
+    if (menu?.id === id) {
+      setMenu(null)
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    setMenu({
+      id,
+      top: Math.min(rect.bottom + 4, window.innerHeight - 240),
+      left: Math.max(8, Math.min(rect.right - 184, window.innerWidth - 192)),
+    })
+  }
+
+  const startRename = (session) => {
+    setMenu(null)
+    setRenamingId(session.id)
+    setRenameValue(session.title)
+  }
+
+  const commitRename = (id) => {
+    const title = renameValue.trim().slice(0, 80) || 'Untitled'
+    setChatSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)))
+    setRenamingId(null)
+    setRenameValue('')
+  }
+
+  const cancelRename = () => {
+    setRenamingId(null)
+    setRenameValue('')
+  }
+
+  const togglePin = (id) => {
+    setMenu(null)
+    setChatSessions((prev) => prev.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)))
+  }
+
+  const toggleArchive = (id) => {
+    setMenu(null)
+    const target = chatSessions.find((s) => s.id === id)
+    if (!target) return
+    const willArchive = !target.archived
+
+    if (willArchive && target.active) {
+      // Archiving the open chat -> switch to the next available conversation.
+      const others = chatSessions.filter((s) => s.id !== id && !s.archived)
+      if (others.length) {
+        const nextId = others[0].id
+        const nextMsgs = sessionMessagesRef.current[nextId]
+        setMessages(nextMsgs && nextMsgs.length ? nextMsgs : [WELCOME_MESSAGE])
+        setChatSessions((prev) =>
+          prev.map((s) =>
+            s.id === id ? { ...s, archived: true, active: false } : { ...s, active: s.id === nextId },
+          ),
+        )
+      } else {
+        const newId = Date.now()
+        setMessages([WELCOME_MESSAGE])
+        setChatSessions((prev) => [
+          { id: newId, title: 'New Conversation', active: true },
+          ...prev.map((s) => (s.id === id ? { ...s, archived: true, active: false } : { ...s, active: false })),
+        ])
+      }
+    } else {
+      setChatSessions((prev) => prev.map((s) => (s.id === id ? { ...s, archived: willArchive } : s)))
+    }
+  }
+
+  const shareSession = async (id) => {
+    setMenu(null)
+    const active = chatSessions.find((s) => s.active)
+    const msgs = active && active.id === id ? messages : sessionMessagesRef.current[id] || []
+    const transcript = msgs
+      .filter((m) => !m.welcome && m.content && m.content.trim())
+      .map((m) => `${m.role === 'user' ? 'You' : 'NyayaAI'}: ${m.content}`)
+      .join('\n\n')
+    if (!transcript) return
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'NyayaAI Conversation', text: transcript })
+        return
+      }
+    } catch {
+      /* user cancelled -> fall through to clipboard */
+    }
+    try {
+      await navigator.clipboard.writeText(transcript)
+      alert('Conversation copied to clipboard.')
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  // Close the "..." menu on outside click / scroll / Escape.
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    const onKey = (e) => { if (e.key === 'Escape') setMenu(null) }
+    const onDown = (e) => {
+      if (!e.target.closest('[data-session-menu]') && !e.target.closest('[data-session-optbtn]')) {
+        setMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [menu])
+
+  const renderSessionRow = (session, isArchived = false) => (
+    <div
+      key={session.id}
+      data-session-row
+      className={`group relative flex items-center border-l-4 ${
+        session.active && !isArchived ? 'border-secondary bg-white/5' : 'border-transparent hover:bg-white/5'
+      }`}
+    >
+      {renamingId === session.id ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onBlur={() => commitRename(session.id)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commitRename(session.id) }
+            else if (e.key === 'Escape') cancelRename()
+          }}
+          className="flex-1 mx-3 my-2 bg-slate-900 border border-secondary/50 rounded px-2 py-1 text-sm text-on-surface focus:outline-none"
+        />
+      ) : (
+        <>
+          <button
+            onClick={() => handleSelectSession(session.id)}
+            className={`flex items-center gap-3 pl-4 py-3 flex-1 min-w-0 text-left ${
+              session.active && !isArchived ? 'text-secondary font-bold' : 'text-on-surface-variant'
+            }`}
+          >
+            <span className="material-symbols-outlined shrink-0 text-[20px]">
+              {session.pinned ? 'push_pin' : session.active && !isArchived ? 'chat' : 'history'}
+            </span>
+            <span className="font-label-caps text-label-caps truncate">{session.title}</span>
+          </button>
+          <button
+            data-session-optbtn
+            onClick={(e) => openMenu(e, session.id)}
+            title="Options"
+            aria-label="Conversation options"
+            className="p-2 mr-1 rounded-md text-on-surface-variant/50 hover:text-on-surface hover:bg-white/10 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-all shrink-0"
+          >
+            <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+          </button>
+        </>
+      )}
+    </div>
+  )
+
   const updateStreamingMessage = (updater) => {
     setMessages((prev) => {
       const next = [...prev]
@@ -178,7 +443,7 @@ function Chat() {
     })
   }
 
-  const streamAssistantReply = async (query, history = []) => {
+  const streamAssistantReply = async (query, history = [], extra = {}) => {
     setIsLoading(true)
 
     try {
@@ -190,7 +455,16 @@ function Chat() {
           Accept: 'text/event-stream',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ query: query.trim(), history }),
+        body: JSON.stringify({
+          query: query.trim(),
+          history,
+          ...(extra.attachmentText
+            ? { attachment_text: extra.attachmentText, attachment_name: extra.attachmentName }
+            : {}),
+          ...(extra.imageData
+            ? { image_data: extra.imageData, image_mime: extra.imageMime, image_name: extra.imageName }
+            : {}),
+        }),
       })
 
       if (response.status === 401) {
@@ -278,7 +552,7 @@ function Chat() {
   // welcome greeting and any empty placeholders.
   const buildHistory = (msgs) =>
     msgs
-      .filter((m) => m !== WELCOME_MESSAGE && m.content && m.content.trim().length > 0)
+      .filter((m) => !m.welcome && m.content && m.content.trim().length > 0)
       .slice(-6)
       .map((m) => ({
         role: m.role === 'ai' ? 'assistant' : 'user',
@@ -287,25 +561,56 @@ function Chat() {
 
   const sendMessage = (text) => {
     const trimmed = text.trim()
-    if (!trimmed || isLoading) return
+    const docs = attachments.filter((a) => a.content)
+    const image = attachments.find((a) => a.imageData)
+    const ready = attachments.filter((a) => a.content || a.imageData)
+    if ((!trimmed && ready.length === 0) || isLoading) return
+    if (attachments.some((a) => a.loading)) return // wait for extraction to finish
 
     const history = buildHistory(messages)
-    const userMessage = { role: 'user', content: trimmed }
+    const allNames = ready.map((a) => a.name).join(', ')
+
+    // Document text is sent separately (attachment_text); an image is sent as
+    // base64 (image_data) for the vision model.
+    const attachmentText = docs.length
+      ? docs.map((a) => `--- ${a.name} ---\n${a.content}`).join('\n\n').slice(0, MAX_ATTACH_TEXT_CHARS)
+      : ''
+
+    const queryToSend =
+      trimmed ||
+      (image
+        ? 'What does this image show? Explain any legal relevance.'
+        : docs.length
+          ? `Please analyse the attached document${docs.length > 1 ? 's' : ''} (${allNames}).`
+          : '')
+
+    const note = ready.length ? `${trimmed ? '\n\n' : ''}[Attached: ${allNames}]` : ''
+    const displayContent = `${trimmed}${note}`.trim() || `[Attached: ${allNames}]`
+
+    const userMessage = { role: 'user', content: displayContent }
     setMessages((prev) => [...prev, userMessage])
 
     const activeSession = chatSessions.find((s) => s.active)
     if (activeSession && activeSession.title === 'New Conversation') {
+      const seed = (trimmed || ready[0]?.name || 'New Conversation').slice(0, 50)
       setChatSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id ? { ...s, title: trimmed.slice(0, 50) } : s,
+          s.id === activeSession.id ? { ...s, title: seed } : s,
         ),
       )
     }
 
     setInput('')
+    setAttachments([])
     speechBaseRef.current = ''
     finalTranscriptRef.current = ''
-    streamAssistantReply(trimmed, history)
+    streamAssistantReply(queryToSend, history, {
+      attachmentText,
+      attachmentName: allNames,
+      imageData: image?.imageData,
+      imageMime: image?.imageMime,
+      imageName: image?.name,
+    })
   }
 
   const handleSend = () => sendMessage(input)
@@ -383,6 +688,73 @@ function Chat() {
     }
   }
 
+  const handleAttachClick = () => fileInputRef.current?.click()
+
+  // PDF / DOCX and other non-plain-text files are extracted server-side.
+  const extractViaBackend = async (file) => {
+    const token = localStorage.getItem('nyayaai_token')
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(apiUrl('/extract'), {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: form,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || 'Could not process this file')
+    return { content: data.text, truncated: data.truncated }
+  }
+
+  const readImageAsBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = String(reader.result || '')
+        const [meta, b64] = result.split(',')
+        const mimeMatch = meta.match(/data:(.*?);base64/)
+        resolve({
+          imageData: b64,
+          imageMime: mimeMatch ? mimeMatch[1] : file.type || 'image/png',
+          dataUrl: result,
+        })
+      }
+      reader.onerror = () => reject(new Error('Could not read image'))
+      reader.readAsDataURL(file)
+    })
+
+  const handleFilesSelected = async (event) => {
+    const files = Array.from(event.target.files || [])
+    event.target.value = '' // allow re-selecting the same file later
+    for (const file of files) {
+      const id = ++attachIdRef.current
+      const isImage = IMAGE_EXT.test(file.name) || (file.type || '').startsWith('image/')
+      setAttachments((prev) => [...prev, { id, name: file.name, loading: true, isImage }])
+      try {
+        let result
+        if (isImage) {
+          // Screenshots / photos: sent to a vision model as base64.
+          if (file.size > MAX_IMAGE_BYTES) throw new Error('Image too large (max 5 MB)')
+          result = { isImage: true, ...(await readImageAsBase64(file)) }
+        } else if (ATTACHABLE_EXT.test(file.name)) {
+          // Plain text: read directly in the browser (no round-trip).
+          const text = await file.text()
+          result = { content: text.slice(0, MAX_ATTACH_CHARS), truncated: text.length > MAX_ATTACH_CHARS }
+        } else {
+          // PDF / DOCX / etc.: extract text on the server.
+          result = await extractViaBackend(file)
+        }
+        setAttachments((prev) => prev.map((a) => (a.id === id ? { id, name: file.name, ...result } : a)))
+      } catch (err) {
+        setAttachments((prev) =>
+          prev.map((a) => (a.id === id ? { id, name: file.name, error: err.message || 'Failed to read file' } : a)),
+        )
+      }
+    }
+  }
+
+  const removeAttachment = (id) =>
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+
   const suggestions = [
     { title: "What is IPC Section 302?", icon: MessageSquare },
     { title: "Explain FIR filing process", icon: Bot },
@@ -391,7 +763,7 @@ function Chat() {
   ]
 
   return (
-    <div className="h-screen flex bg-ink font-body text-fg overflow-hidden relative">
+    <div className="antialiased min-h-screen flex font-body-md text-body-md bg-background text-on-surface overflow-hidden relative">
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -400,188 +772,260 @@ function Chat() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden fixed inset-0 bg-ink/80 z-20 backdrop-blur-sm"
+            className="md:hidden fixed inset-0 bg-slate-900/80 z-20 backdrop-blur-sm"
           />
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
-      <motion.aside
+      {/* SideNavBar */}
+      <motion.nav
         initial={{ x: '-100%' }}
         animate={{ 
           x: sidebarOpen ? 0 : '-100%',
-          width: sidebarOpen ? 288 : 0,
+          width: sidebarOpen ? 280 : 0,
           opacity: sidebarOpen ? 1 : 0
         }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
-        className="fixed md:relative z-30 h-full flex flex-col bg-ink-2/90 backdrop-blur-xl border-r border-line overflow-hidden shrink-0"
+        className="fixed md:relative left-0 top-0 h-full w-[280px] flex flex-col z-40 bg-slate-800 border-r border-glass-border shrink-0 overflow-hidden"
       >
-        <div className="w-72 flex flex-col h-full">
-          <div className="p-4 border-b border-line flex items-center justify-between">
-            <h1 className="text-gold font-display text-xl font-bold">
-              NyayaAI
-            </h1>
+        <div className="w-[280px] flex flex-col h-full">
+          {/* Header */}
+          <div className="p-6 flex items-center gap-4 border-b border-glass-border shrink-0">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-white/5 border border-glass-border flex items-center justify-center shrink-0">
+              <img src={logo} alt="NyayaAI" className="w-full h-full object-cover" />
+            </div>
+            <div>
+              <h1 className="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface">NyayaAI</h1>
+              <p className="font-label-caps text-label-caps text-on-surface-variant">Illuminated Justice</p>
+            </div>
             <button 
               onClick={() => setSidebarOpen(false)}
-              className="md:hidden p-1.5 text-fg-muted hover:text-fg transition-colors rounded-lg hover:bg-surface/50"
-              aria-label="Close sidebar"
+              className="md:hidden ml-auto p-1.5 text-on-surface-variant hover:text-on-surface transition-colors"
             >
               <X size={20} />
             </button>
           </div>
 
-          <div className="px-4 pt-4">
+          {/* Navigation Tabs */}
+          <div className="flex-1 py-4 flex flex-col overflow-y-auto">
             <button
               onClick={handleNewChat}
-              className="w-full bg-surface/40 hover:bg-surface/80 border border-line hover:border-gold-line text-fg rounded-xl px-4 py-2.5 transition-all flex items-center gap-2 group shadow-sm backdrop-blur-md"
+              className="mx-2 mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary font-bold bg-white/5 hover:bg-white/10 transition-all duration-200 ease-in-out text-left"
             >
-              <Plus size={18} className="text-gold-dim group-hover:text-gold transition-colors" />
-              <span>New Chat</span>
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add_comment</span>
+              <span className="font-label-caps text-label-caps truncate">New Consultation</span>
             </button>
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-1">
-            <p className="text-xs font-semibold text-fg-faint uppercase tracking-wider mb-3 px-1">Recent Sessions</p>
-            {chatSessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => handleSelectSession(session.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all truncate flex items-center gap-3 relative ${
-                  session.active
-                    ? 'bg-surface-2 border border-gold-line text-fg'
-                    : 'text-fg-muted hover:bg-surface/50 hover:text-fg border border-transparent'
-                }`}
-              >
-                {session.active && (
-                  <motion.div 
-                    layoutId="activeIndicator"
-                    className="absolute left-0 w-1 h-4 bg-gold rounded-r-full"
-                  />
-                )}
-                <span className="truncate pl-1">{session.title}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="p-4 border-t border-line">
-            <a
-              href="/"
-              className="flex items-center gap-2 text-fg-muted text-sm hover:text-fg transition-colors"
-            >
-              <ChevronLeft size={16} />
-              Back to Home
-            </a>
-          </div>
-        </div>
-      </motion.aside>
-
-      {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col bg-ink min-w-0 relative">
-        <header className="px-4 md:px-6 py-4 border-b border-line bg-surface/40 backdrop-blur-xl flex items-center gap-3 sticky top-0 z-10 shrink-0">
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-1.5 -ml-1.5 text-fg-muted hover:text-fg transition-colors rounded-lg hover:bg-surface/50"
-              aria-label="Open sidebar"
-            >
-              <Menu size={20} />
-            </button>
-          )}
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-lg font-semibold text-fg">
-                {chatTitle}
-              </h2>
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
+            <div className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/50">
+              Recents
             </div>
-            <div className="h-0.5 w-full bg-gradient-to-r from-gold-dim to-transparent mt-1 rounded-full opacity-50" />
-          </div>
-        </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 chat-scroll">
-          <div className="max-w-3xl mx-auto w-full space-y-5">
-          <AnimatePresence initial={false}>
-            {messages.map((message, index) => {
-              const isLastAi = message.role === 'ai' && (index === messages.length - 1 || messages[index + 1]?.role === 'user')
-              return (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 15, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            {recentSessions.length === 0 && (
+              <p className="px-4 py-2 text-xs text-on-surface-variant/40">No conversations yet.</p>
+            )}
+            {recentSessions.map((session) => renderSessionRow(session, false))}
+
+            {archivedSessions.length > 0 && (
+              <div className="mt-2 border-t border-glass-border pt-2">
+                <button
+                  onClick={() => setShowArchived((v) => !v)}
+                  className="w-full flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/50 hover:text-on-surface-variant transition-colors"
                 >
-                  <ChatBubble
-                    message={message}
-                    onRegenerate={isLastAi ? handleRegenerate : undefined}
-                    onBranch={message.role === 'ai' ? () => handleBranch(index) : undefined}
-                    onAskAbout={message.role === 'ai' ? handleAskAbout : undefined}
-                  />
-                </motion.div>
-              )
-            })}
-          </AnimatePresence>
+                  <span className="material-symbols-outlined text-[16px]">{showArchived ? 'expand_more' : 'chevron_right'}</span>
+                  Archived ({archivedSessions.length})
+                </button>
+                {showArchived && archivedSessions.map((session) => renderSessionRow(session, true))}
+              </div>
+            )}
+          </div>
 
-          {isLoading && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
-            >
-              <TypingIndicator />
-            </motion.div>
-          )}
-
-          {messages.length <= 1 && !isLoading && (
-            <div className="w-full mb-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6"
-              >
-                {suggestions.map((suggestion, i) => (
-                  <motion.button
-                    key={i}
-                    onClick={() => handleSuggestionClick(suggestion.title)}
-                    whileHover={{ y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="p-4 rounded-xl border border-line-2 bg-gradient-to-br from-surface/60 to-surface/30 hover:from-surface-2 hover:to-surface hover:border-gold-line hover:shadow-[0_8px_24px_-12px_rgba(212,166,78,0.25)] transition-all text-left flex items-center gap-3 group backdrop-blur-sm"
-                  >
-                    <div className="p-2.5 rounded-lg bg-surface-2 text-gold group-hover:bg-gold/15 group-hover:shadow-[0_0_12px_rgba(212,166,78,0.25)] transition-all shrink-0">
-                      <suggestion.icon size={18} />
-                    </div>
-                    <h3 className="text-sm font-medium text-fg group-hover:text-gold-soft transition-colors">{suggestion.title}</h3>
-                  </motion.button>
-                ))}
-              </motion.div>
+          {/* Footer / CTA */}
+          <div className="p-4 border-t border-glass-border shrink-0">
+            <button className="w-full py-3 mb-4 rounded bg-secondary text-on-secondary font-label-caps text-label-caps hover:bg-secondary-container transition-colors">
+              Upgrade to Pro
+            </button>
+            <div className="flex flex-col gap-1">
+              <a className="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-white/5 transition-colors" href="/">
+                <span className="material-symbols-outlined">home</span>
+                <span className="font-label-caps text-label-caps">Home</span>
+              </a>
+              <a className="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-white/5 transition-colors" href="#">
+                <span className="material-symbols-outlined">settings</span>
+                <span className="font-label-caps text-label-caps">Settings</span>
+              </a>
             </div>
-          )}
+          </div>
+        </div>
+      </motion.nav>
 
-          <div ref={messagesEndRef} className="h-4" />
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-screen relative min-w-0">
+        {/* TopAppBar (Mobile Only) */}
+        {!sidebarOpen && (
+          <header className="flex md:hidden absolute top-0 w-full z-30 justify-between items-center px-4 h-16 bg-glass-bg backdrop-blur-md border-b border-glass-border shrink-0">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSidebarOpen(true)}>
+                <span className="material-symbols-outlined text-secondary">menu</span>
+              </button>
+              <span className="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface truncate">{chatTitle}</span>
+            </div>
+            <div className="flex gap-4 shrink-0">
+              <span className="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors cursor-pointer">notifications</span>
+            </div>
+          </header>
+        )}
+
+        {/* Chat Canvas */}
+        <div className={`flex-1 min-h-0 overflow-y-auto p-4 md:p-8 ${!sidebarOpen ? 'mt-16' : ''} md:mt-0 flex flex-col items-center chat-scroll`}>
+          <div className="w-full max-w-[800px] flex flex-col gap-8 pb-6">
+            <AnimatePresence initial={false}>
+              {messages.map((message, index) => {
+                const isLastAi = message.role === 'ai' && (index === messages.length - 1 || messages[index + 1]?.role === 'user')
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    className="w-full"
+                  >
+                    <ChatBubble
+                      message={message}
+                      isStreaming={false}
+                      onRegenerate={isLastAi ? handleRegenerate : undefined}
+                      onBranch={message.role === 'ai' ? () => handleBranch(index) : undefined}
+                      onAskAbout={message.role === 'ai' ? handleAskAbout : undefined}
+                    />
+                  </motion.div>
+                )
+              })}
+            </AnimatePresence>
+
+            {isLoading && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className="self-start w-full"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-white/5 border border-glass-border flex items-center justify-center shrink-0">
+                    <img src={logo} alt="NyayaAI" className="w-full h-full object-cover" />
+                  </div>
+                  <span className="font-label-caps text-label-caps text-secondary">NyayaAI is thinking...</span>
+                </div>
+                <div className="glass-panel rounded-lg p-6 border-l-4 border-l-secondary ai-think-glow max-w-fit">
+                   <TypingIndicator />
+                </div>
+              </motion.div>
+            )}
+
+            {messages.length <= 1 && !isLoading && (
+              <div className="w-full mb-8">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6"
+                >
+                  {suggestions.map((suggestion, i) => (
+                    <motion.button
+                      key={i}
+                      onClick={() => handleSuggestionClick(suggestion.title)}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="p-5 rounded-lg border border-glass-border bg-slate-800/50 hover:bg-slate-800 hover:border-secondary/30 transition-all text-left flex items-center gap-4 group"
+                    >
+                      <div className="p-2 rounded-full bg-surface-variant text-secondary group-hover:bg-secondary/20 transition-all shrink-0">
+                        <suggestion.icon size={18} />
+                      </div>
+                      <h3 className="text-sm font-medium text-on-surface group-hover:text-secondary transition-colors">{suggestion.title}</h3>
+                    </motion.button>
+                  ))}
+                </motion.div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} className="h-4" />
           </div>
         </div>
 
-        <div className="p-4 pt-2 shrink-0">
-          <div className="max-w-3xl mx-auto relative group">
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-gold/20 via-gold-dim to-transparent rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 blur-md" />
-            <div className="relative flex items-end gap-3 bg-surface/80 backdrop-blur-xl border border-line-2 rounded-2xl p-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.6)] focus-within:border-gold-line transition-colors">
+        {/* Input Area (in-flow so it never overlaps the last message's actions) */}
+        <div className="w-full p-4 md:p-6 bg-[#020617]/95 backdrop-blur-sm border-t border-glass-border flex justify-center shrink-0 z-20">
+          <div className="w-full max-w-[800px]">
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachments.map((a) => (
+                  <div
+                    key={a.id}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${
+                      a.error
+                        ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                        : a.loading
+                          ? 'bg-slate-800/60 border-glass-border text-on-surface-variant/70'
+                          : 'bg-slate-800 border-glass-border text-on-surface-variant'
+                    }`}
+                  >
+                    {a.isImage && a.dataUrl ? (
+                      <img src={a.dataUrl} alt="" className="w-6 h-6 rounded object-cover" />
+                    ) : (
+                      <span className={`material-symbols-outlined text-sm ${a.loading ? 'animate-spin' : ''}`}>
+                        {a.loading ? 'progress_activity' : a.error ? 'error' : a.isImage ? 'image' : 'description'}
+                      </span>
+                    )}
+                    <span className="truncate max-w-[160px]">{a.name}</span>
+                    {a.loading && <span className="text-on-surface-variant/60">processing…</span>}
+                    {a.truncated && <span className="text-on-surface-variant/60">(truncated)</span>}
+                    {a.error && <span className="truncate max-w-[220px]">— {a.error}</span>}
+                    {!a.loading && (
+                      <button
+                        onClick={() => removeAttachment(a.id)}
+                        className="hover:text-on-surface transition-colors"
+                        aria-label={`Remove ${a.name}`}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="glass-panel rounded-xl p-2 flex items-end gap-2 shadow-2xl relative overflow-hidden group focus-within:border-secondary/50 transition-colors">
+              <div className="absolute inset-0 bg-secondary/5 blur-xl pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity"></div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.rtf,.html,.htm,.xml,.yaml,.yml,text/*,image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
+                className="hidden"
+                onChange={handleFilesSelected}
+              />
+              <button
+                type="button"
+                onClick={handleAttachClick}
+                disabled={isLoading}
+                title="Attach a text document"
+                aria-label="Attach a text document"
+                className="p-3 text-on-surface-variant hover:text-secondary transition-colors shrink-0 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined">attach_file</span>
+              </button>
+
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about any Indian law section..."
-                className="flex-1 bg-transparent px-3 py-2 text-fg placeholder:text-fg-faint focus:outline-none resize-none min-h-[44px] max-h-[160px] leading-relaxed"
+                className="w-full bg-transparent border-none focus:ring-0 text-on-surface placeholder-on-surface-variant resize-none max-h-[150px] min-h-[44px] py-3 text-sm focus:outline-none z-10 relative"
+                placeholder="Draft a consultation query or cite a provision..."
                 rows={1}
               />
 
-              <div className="flex items-center gap-1.5 pb-1 pr-1 shrink-0">
+              <div className="flex gap-1 shrink-0 pb-1 pr-1 z-10 relative items-center">
                 {input.length > 200 && (
-                  <span className="text-xs text-fg-faint">
+                  <span className="text-xs text-on-surface-variant mr-2">
                     {input.length}
                   </span>
                 )}
@@ -589,41 +1033,56 @@ function Chat() {
                   <button
                     onClick={toggleRecording}
                     disabled={isLoading}
-                    className={`p-2 rounded-xl transition-all flex items-center justify-center relative ${
+                    className={`p-2 transition-colors rounded-lg ${
                       isRecording
-                        ? 'bg-red-500/15 text-red-400 border border-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
-                        : 'text-fg-muted hover:text-fg hover:bg-surface-2'
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        : 'text-on-surface-variant hover:text-secondary hover:bg-white/5'
                     }`}
                     aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
                   >
-                    {isRecording ? (
-                      <>
-                        <MicOff size={18} />
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
-                      </>
-                    ) : (
-                      <Mic size={18} />
-                    )}
+                    {isRecording ? <MicOff size={18} /> : <span className="material-symbols-outlined">mic</span>}
                   </button>
                 )}
                 <button
                   onClick={handleSend}
-                  disabled={!input.trim() || isLoading}
-                  className="bg-gold text-ink p-2 rounded-xl hover:bg-gold-bright transition-all disabled:opacity-50 disabled:bg-surface-2 disabled:text-fg-muted flex items-center justify-center relative overflow-hidden"
+                  disabled={(!input.trim() && attachments.filter((a) => a.content || a.imageData).length === 0) || isLoading || attachments.some((a) => a.loading)}
+                  className="p-2 bg-secondary text-on-secondary rounded-lg hover:bg-secondary-container transition-colors shadow-lg disabled:opacity-50 disabled:bg-surface-variant disabled:text-on-surface-variant"
                   aria-label="Send message"
                 >
-                  <Send size={18} className={!input.trim() || isLoading ? "" : "transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"} />
+                  <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
                 </button>
               </div>
             </div>
-            <p className="text-center text-[11px] text-fg-faint mt-2 px-4">
-              NyayaAI provides general legal information, not legal advice. It can be
-              inaccurate - verify important matters with a qualified lawyer.
-            </p>
+            <div className="text-center mt-3">
+              <span className="font-label-caps text-[10px] text-on-surface-variant/50">NyayaAI can make mistakes. Verify critical legal information.</span>
+            </div>
           </div>
         </div>
       </main>
+
+      {/* Session "..." options menu (fixed so it escapes the sidebar's overflow) */}
+      {menu && (() => {
+        const s = chatSessions.find((x) => x.id === menu.id)
+        if (!s) return null
+        return (
+          <div
+            data-session-menu
+            style={{ position: 'fixed', top: menu.top, left: menu.left }}
+            className="z-[9999] min-w-[184px] rounded-xl border border-glass-border bg-slate-800 shadow-2xl py-1"
+          >
+            <SessionMenuItem icon="ios_share" label="Share" onClick={() => shareSession(s.id)} />
+            <SessionMenuItem icon="edit" label="Rename" onClick={() => startRename(s)} />
+            <SessionMenuItem icon="push_pin" label={s.pinned ? 'Unpin' : 'Pin chat'} onClick={() => togglePin(s.id)} />
+            <SessionMenuItem icon="inventory_2" label={s.archived ? 'Unarchive' : 'Archive'} onClick={() => toggleArchive(s.id)} />
+            <SessionMenuItem
+              icon="delete"
+              label="Delete"
+              danger
+              onClick={() => { const id = s.id; setMenu(null); handleDeleteSession(id) }}
+            />
+          </div>
+        )
+      })()}
 
       {/* One-time legal disclaimer consent */}
       <AnimatePresence>
@@ -632,35 +1091,35 @@ function Chat() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center bg-ink/85 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-background/85 backdrop-blur-sm p-4"
           >
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.96 }}
               transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-              className="max-w-md w-full bg-gradient-to-br from-surface to-ink-3 border border-gold-line/50 rounded-2xl p-6 shadow-2xl"
+              className="max-w-md w-full glass-panel border border-secondary/30 rounded-2xl p-6 shadow-2xl"
             >
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gold/10 border border-gold-line/50">
-                  <Sparkles className="h-4 w-4 text-gold" />
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-secondary/10 border border-secondary/30">
+                  <Sparkles className="h-4 w-4 text-secondary" />
                 </div>
-                <h2 className="font-display text-lg font-semibold text-fg">Before you begin</h2>
+                <h2 className="font-headline-lg-mobile text-lg font-semibold text-on-surface">Before you begin</h2>
               </div>
-              <p className="text-sm text-fg-muted leading-relaxed mb-3">
-                NyayaAI is an AI assistant that provides <strong className="text-fg">general legal
+              <p className="text-sm text-on-surface-variant leading-relaxed mb-3">
+                NyayaAI is an AI assistant that provides <strong className="text-on-surface">general legal
                 information</strong> about Indian law for educational purposes. It is
-                <strong className="text-fg"> not a lawyer</strong> and its responses may be
+                <strong className="text-on-surface"> not a lawyer</strong> and its responses may be
                 incomplete or inaccurate.
               </p>
-              <p className="text-sm text-fg-muted leading-relaxed mb-5">
+              <p className="text-sm text-on-surface-variant leading-relaxed mb-5">
                 Nothing here creates a lawyer-client relationship or constitutes legal advice.
                 For decisions about your specific situation, consult a qualified advocate.
               </p>
               <button
                 type="button"
                 onClick={acceptDisclaimer}
-                className="w-full bg-gold text-ink font-semibold py-2.5 rounded-xl hover:bg-gold-bright transition-colors"
+                className="w-full bg-secondary text-on-secondary font-semibold py-2.5 rounded-xl hover:bg-secondary-container transition-colors"
               >
                 I understand
               </button>

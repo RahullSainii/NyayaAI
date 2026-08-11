@@ -25,6 +25,75 @@
   --font-display: 'Fraunces', Georgia, serif;
   --font-body: 'Manrope', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  
+  /* New Chat UI Theme Variables */
+  --color-on-secondary-container: #5b4400;
+  --color-secondary-fixed-dim: #f7be1d;
+  --color-secondary-fixed: #ffdf9a;
+  --color-primary-fixed: #dae2fd;
+  --color-slate-900: #0F172A;
+  --color-on-tertiary-fixed-variant: #3a485c;
+  --color-surface-tint: #bec6e0;
+  --color-inverse-on-surface: #2d3133;
+  --color-on-tertiary-fixed: #0d1c2f;
+  --color-outline-variant: #45464d;
+  --color-tertiary: #b9c7e0;
+  --color-gold-light: #FEF08A;
+  --color-outline: #909097;
+  --color-secondary: #ffca45;
+  --color-secondary-container: #e4ae00;
+  --color-tertiary-container: #09182a;
+  --color-on-tertiary: #233144;
+  --color-surface-container-highest: #323537;
+  --color-on-error: #690005;
+  --color-on-background: #e0e3e5;
+  --color-on-primary-container: #798098;
+  --color-surface-container: #1d2022;
+  --color-on-tertiary-container: #738298;
+  --color-slate-400: #94A3B8;
+  --color-inverse-primary: #565e74;
+  --color-on-secondary-fixed: #251a00;
+  --color-error-container: #93000a;
+  --color-on-primary-fixed-variant: #3f465c;
+  --color-glass-bg: rgba(30, 41, 59, 0.7);
+  --color-on-surface-variant: #c6c6cd;
+  --color-slate-800: #1E293B;
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+  --color-background: #101415;
+  --color-error: #ffb4ab;
+  --color-primary-fixed-dim: #bec6e0;
+  --color-surface-container-low: #191c1e;
+  --color-tertiary-fixed: #d5e3fd;
+  --color-surface-variant: #323537;
+  --color-on-secondary-fixed-variant: #5a4300;
+  --color-primary: #bec6e0;
+  --color-inverse-surface: #e0e3e5;
+  --color-on-secondary: #3f2e00;
+  --color-on-surface: #e0e3e5;
+  --color-on-error-container: #ffdad6;
+  --color-primary-container: #0f172a;
+  --color-on-primary: #283044;
+  --color-surface-bright: #363a3b;
+  --color-surface-container-lowest: #0b0f10;
+  --color-on-primary-fixed: #131b2e;
+  --color-surface-container-high: #272a2c;
+  --color-surface-dim: #101415;
+  --color-tertiary-fixed-dim: #b9c7e0;
+
+  --spacing-gutter: 1.5rem;
+  --spacing-sidebar-width: 280px;
+  --spacing-stack-md: 1rem;
+  --spacing-stack-sm: 0.5rem;
+  --spacing-stack-lg: 2rem;
+  --spacing-chat-max-width: 800px;
+
+  --font-headline-lg: 'Plus Jakarta Sans', sans-serif;
+  --font-citation: 'Inter', sans-serif;
+  --font-body-sm: 'Inter', sans-serif;
+  --font-headline-xl: 'Plus Jakarta Sans', sans-serif;
+  --font-body-md: 'Inter', sans-serif;
+  --font-headline-lg-mobile: 'Plus Jakarta Sans', sans-serif;
+  --font-label-caps: 'Inter', sans-serif;
 
   --radius-xs: 6px;
   --radius-sm: 10px;
@@ -152,6 +221,17 @@ img {
   border: 1px solid rgba(255,255,255,0.08);
 }
 .glass { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+
+/* New Chat UI Custom Classes */
+.glass-panel {
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-glass-border);
+}
+.ai-think-glow {
+  box-shadow: 0 0 40px 5px rgba(255, 202, 69, 0.05);
+}
 
 /* Glow Border Effects */
 .glow-border { position: relative; }

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, FileText, Copy, Check, ThumbsUp, ThumbsDown,
-  Share2, RefreshCw, MoreHorizontal, Volume2, VolumeX, GitBranch,
+  Share2, RefreshCw, Volume2, VolumeX, GitBranch,
   MessageSquare, Globe, ExternalLink,
 } from 'lucide-react';
+import logo from '../assets/nyaya.jpeg';
 
 const isWebSource = (source) =>
   typeof source === 'object' && source.law_type === 'WEB';
@@ -32,14 +33,34 @@ const formatSourceLabel = (source) => {
   return `${lawType} Section ${section}${page}`;
 };
 
+const SOURCE_BADGES = {
+  web: { icon: 'public', label: 'Web', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/30' },
+  document: { icon: 'description', label: 'Document', cls: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' },
+  image: { icon: 'image', label: 'Image', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
+};
+
+function SourceBadge({ sourceType }) {
+  const badge = SOURCE_BADGES[sourceType];
+  if (!badge) return null;
+  return (
+    <span
+      title={`Answer based on: ${badge.label}`}
+      className={`flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full border ${badge.cls}`}
+    >
+      <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>{badge.icon}</span>
+      {badge.label}
+    </span>
+  );
+}
+
 function formatInline(text) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-semibold text-fg">{part.slice(2, -2)}</strong>;
+      return <strong key={i} className="font-semibold text-on-surface">{part.slice(2, -2)}</strong>;
     }
     if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={i} className="bg-surface-2 text-gold-soft px-1.5 py-0.5 rounded text-xs font-mono">{part.slice(1, -1)}</code>;
+      return <code key={i} className="bg-slate-800 text-secondary px-1.5 py-0.5 rounded text-xs font-mono">{part.slice(1, -1)}</code>;
     }
     return part;
   });
@@ -66,17 +87,17 @@ function renderMarkdown(text) {
   const flushList = () => {
     if (listItems.length > 0) {
       const Tag = listType === 'ol' ? 'ol' : 'ul';
-      elements.push(<Tag key={`l-${elements.length}`} className={listType === 'ol' ? 'list-decimal pl-5 space-y-1.5 my-3 marker:text-gold marker:font-semibold text-fg' : 'list-disc pl-5 space-y-1.5 my-3 marker:text-gold text-fg'}>{listItems}</Tag>);
+      elements.push(<Tag key={`l-${elements.length}`} className={listType === 'ol' ? 'list-decimal pl-5 space-y-1.5 my-3 marker:text-secondary marker:font-semibold text-on-surface-variant' : 'list-disc pl-5 space-y-1.5 my-3 marker:text-secondary text-on-surface-variant'}>{listItems}</Tag>);
       listItems = [];
       listType = null;
     }
   };
 
   const headingClass = {
-    1: 'text-lg font-bold text-fg mt-4 mb-2',
-    2: 'text-base font-bold text-fg mt-3 mb-2',
-    3: 'text-[13px] font-semibold text-gold-soft uppercase tracking-wide mt-3 mb-1.5',
-    4: 'text-sm font-semibold text-fg mt-2 mb-1',
+    1: 'text-lg font-bold text-on-surface mt-4 mb-2',
+    2: 'text-base font-bold text-on-surface mt-3 mb-2',
+    3: 'text-[13px] font-semibold text-secondary uppercase tracking-wide mt-3 mb-1.5',
+    4: 'text-sm font-semibold text-on-surface mt-2 mb-1',
   };
 
   for (let i = 0; i < lines.length; i++) {
@@ -93,12 +114,12 @@ function renderMarkdown(text) {
         j++;
       }
       elements.push(
-        <div key={`t-${i}`} className="my-3 overflow-x-auto rounded-lg border border-line-2">
+        <div key={`t-${i}`} className="my-3 overflow-x-auto rounded-lg border border-glass-border">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="bg-surface-2">
+              <tr className="bg-slate-800">
                 {headers.map((h, hi) => (
-                  <th key={hi} className="text-left font-semibold text-gold-soft px-3 py-2 border-b border-line-2">
+                  <th key={hi} className="text-left font-semibold text-secondary px-3 py-2 border-b border-glass-border">
                     {formatInline(h)}
                   </th>
                 ))}
@@ -106,9 +127,9 @@ function renderMarkdown(text) {
             </thead>
             <tbody>
               {rows.map((r, ri) => (
-                <tr key={ri} className="border-b border-line/40 last:border-0">
+                <tr key={ri} className="border-b border-glass-border/40 last:border-0">
                   {r.map((c, ci) => (
-                    <td key={ci} className="px-3 py-2 text-fg align-top">{formatInline(c)}</td>
+                    <td key={ci} className="px-3 py-2 text-on-surface align-top">{formatInline(c)}</td>
                   ))}
                 </tr>
               ))}
@@ -146,7 +167,7 @@ function renderMarkdown(text) {
       if (line.trim() === '') {
         elements.push(<div key={i} className="h-2" />);
       } else {
-        elements.push(<p key={i} className="mb-1.5 text-fg leading-[1.65]">{formatInline(line)}</p>);
+        elements.push(<p key={i} className="mb-1.5 text-on-surface-variant leading-[1.65]">{formatInline(line)}</p>);
       }
     }
   }
@@ -154,9 +175,19 @@ function renderMarkdown(text) {
   return elements;
 }
 
-/* Strip markdown so copy / share / read-aloud get clean text */
+/* Strip markdown so copy / share / read-aloud get clean, natural text */
 const toPlainText = (text = '') =>
-  text.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1');
+  text
+    .replace(/^#{1,6}\s+/gm, '')            // headings
+    .replace(/^\s*[-*]\s+/gm, '')            // bullet markers
+    .replace(/^\s*\d+\.\s+/gm, '')           // numbered list markers
+    .replace(/\|/g, ' ')                     // table pipes
+    .replace(/`{1,3}([^`]+)`{1,3}/g, '$1')   // code
+    .replace(/\*\*([^*]+)\*\*/g, '$1')       // bold
+    .replace(/\[(\d+)\]/g, '')               // [1] citation refs
+    .replace(/\n{2,}/g, '. ')                // paragraph breaks -> pause
+    .replace(/[ \t]+/g, ' ')
+    .trim();
 
 function TextSelectionToolbar({ onAskAbout }) {
   const [selection, setSelection] = useState(null);
@@ -181,11 +212,15 @@ function TextSelectionToolbar({ onAskAbout }) {
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
 
-      setPosition({
-        top: rect.top - 52,
-        left: rect.left + rect.width / 2,
-      });
+      // Prefer showing above the selection; if there's no room, show below.
+      const above = rect.top - 52;
+      const top = above < 8 ? rect.bottom + 12 : above;
+      const left = Math.min(
+        Math.max(rect.left + rect.width / 2, 90),
+        window.innerWidth - 90,
+      );
 
+      setPosition({ top, left });
       setSelection(text);
     };
 
@@ -238,21 +273,21 @@ function TextSelectionToolbar({ onAskAbout }) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.92 }}
         transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-        className="relative flex items-center gap-0.5 bg-surface-2/95 border border-line-2 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)_inset] backdrop-blur-2xl p-1.5"
+        className="relative flex items-center gap-0.5 glass-panel rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)_inset] p-1.5"
       >
         {/* Arrow pointer */}
-        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-surface-2/95 border-r border-b border-line-2" />
+        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-slate-800 border-r border-b border-glass-border" />
 
         <button
           type="button"
           onClick={handleAsk}
-          className="relative flex items-center gap-2 px-3.5 py-2 text-[13px] font-semibold text-ink bg-gradient-to-b from-gold-bright via-gold to-[#b88d3e] hover:from-gold hover:via-[#c99433] hover:to-[#a67c2a] rounded-xl transition-all whitespace-nowrap shadow-[0_2px_8px_rgba(212,166,78,0.3),inset_0_1px_0_rgba(255,255,255,0.3)] active:scale-95"
+          className="relative flex items-center gap-2 px-3.5 py-2 text-[13px] font-semibold text-on-secondary bg-secondary hover:bg-secondary-container rounded-xl transition-all whitespace-nowrap shadow-[0_2px_8px_rgba(255,202,69,0.3),inset_0_1px_0_rgba(255,255,255,0.3)] active:scale-95"
         >
           <MessageSquare className="w-4 h-4" strokeWidth={2.5} />
           Ask NyayaAI
         </button>
 
-        <div className="w-px h-5 bg-line-2 mx-0.5" />
+        <div className="w-px h-5 bg-glass-border mx-0.5" />
 
         <button
           type="button"
@@ -260,7 +295,7 @@ function TextSelectionToolbar({ onAskAbout }) {
           className={`flex items-center gap-2 px-3 py-2 text-[13px] font-medium rounded-xl transition-all whitespace-nowrap active:scale-95 ${
             copiedSel
               ? 'text-emerald-400 bg-emerald-400/10 shadow-[0_0_12px_rgba(52,211,153,0.15)]'
-              : 'text-fg-muted hover:text-fg hover:bg-white/5'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
           }`}
         >
           {copiedSel ? (
@@ -275,15 +310,15 @@ function TextSelectionToolbar({ onAskAbout }) {
   );
 }
 
-function ActionButton({ label, onClick, active, activeClass = 'text-gold', children }) {
+function ActionButton({ label, onClick, active, activeClass = 'text-secondary', children }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`p-1.5 rounded-lg transition-colors hover:bg-surface-2 ${
-        active ? activeClass : 'text-fg-muted hover:text-fg'
+      className={`p-1.5 rounded-lg transition-colors hover:bg-white/5 ${
+        active ? activeClass : 'text-on-surface-variant hover:text-on-surface'
       }`}
     >
       {children}
@@ -294,21 +329,19 @@ function ActionButton({ label, onClick, active, activeClass = 'text-gold', child
 function MessageActions({ message, onRegenerate, onBranch }) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const menuRef = useRef(null);
+  const keepAliveRef = useRef(null);
 
-  // Close the "..." menu on outside click
-  useEffect(() => {
-    const onClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
+  const stopKeepAlive = () => {
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
+    }
+  };
 
   // Stop speech if this message unmounts
   useEffect(() => () => {
+    stopKeepAlive();
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -345,27 +378,53 @@ function MessageActions({ message, onRegenerate, onBranch }) {
 
   const handleReadAloud = () => {
     const synth = window.speechSynthesis;
-    if (!synth) return;
-    setMenuOpen(false);
+    if (!synth) {
+      alert('Text-to-speech is not supported in this browser.');
+      return;
+    }
 
-    if (speaking) {
+    // Toggle off if it's already reading.
+    if (speaking || synth.speaking) {
+      stopKeepAlive();
       synth.cancel();
       setSpeaking(false);
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(plainText);
+    const text = plainText;
+    if (!text) return;
+
+    synth.cancel(); // clear anything stuck in the queue
+
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-IN';
     utterance.rate = 1;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    synth.cancel();
-    synth.speak(utterance);
+    utterance.pitch = 1;
+
+    // Prefer an English voice if the list is populated (loads async in Chrome).
+    const voices = synth.getVoices();
+    const preferred =
+      voices.find((v) => /en[-_]IN/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
+    if (preferred) utterance.voice = preferred;
+
+    utterance.onend = () => { stopKeepAlive(); setSpeaking(false); };
+    utterance.onerror = () => { stopKeepAlive(); setSpeaking(false); };
+
     setSpeaking(true);
+    // Chrome pauses long utterances after ~15s; nudge it to keep going.
+    stopKeepAlive();
+    keepAliveRef.current = setInterval(() => {
+      if (!synth.speaking) { stopKeepAlive(); return; }
+      synth.pause();
+      synth.resume();
+    }, 9000);
+
+    // A tiny delay after cancel() improves reliability in Chrome.
+    setTimeout(() => synth.speak(utterance), 60);
   };
 
   return (
-    <div className="flex items-center gap-0.5 mt-3 pt-2 border-t border-line/40 relative">
+    <div className="flex items-center gap-0.5 mt-3 pt-2 border-t border-glass-border relative">
       <ActionButton label={copied ? 'Copied!' : 'Copy'} onClick={handleCopy} active={copied} activeClass="text-emerald-400">
         {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
       </ActionButton>
@@ -397,53 +456,23 @@ function MessageActions({ message, onRegenerate, onBranch }) {
         </ActionButton>
       )}
 
-      {/* Speaking indicator button (always visible while reading) */}
-      {speaking && (
-        <ActionButton label="Stop reading" onClick={handleReadAloud} active activeClass="text-gold">
-          <VolumeX className="w-3.5 h-3.5" />
+      <ActionButton
+        label={speaking ? 'Stop reading' : 'Read aloud'}
+        onClick={handleReadAloud}
+        active={speaking}
+        activeClass="text-secondary"
+      >
+        {speaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+      </ActionButton>
+
+      {onBranch && (
+        <ActionButton label="Branch in new chat" onClick={onBranch}>
+          <GitBranch className="w-3.5 h-3.5" />
         </ActionButton>
       )}
 
-      {/* "..." menu — Branch in new chat / Read aloud */}
-      <div className="relative" ref={menuRef}>
-        <ActionButton label="More actions" onClick={() => setMenuOpen((o) => !o)} active={menuOpen}>
-          <MoreHorizontal className="w-3.5 h-3.5" />
-        </ActionButton>
-
-        <AnimatePresence>
-          {menuOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: 6, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.96 }}
-              transition={{ duration: 0.15 }}
-              className="absolute bottom-full left-0 mb-2 z-30 min-w-[190px] rounded-xl border border-line bg-surface shadow-xl backdrop-blur-xl overflow-hidden"
-            >
-              {onBranch && (
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); onBranch(); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-fg-muted hover:text-fg hover:bg-surface-2 transition-colors text-left"
-                >
-                  <GitBranch className="w-4 h-4" />
-                  Branch in new chat
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleReadAloud}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-fg-muted hover:text-fg hover:bg-surface-2 transition-colors text-left"
-              >
-                {speaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                {speaking ? 'Stop reading' : 'Read aloud'}
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
       {message.sources && message.sources.length > 0 && (
-        <span className="ml-1.5 text-xs text-fg-faint flex items-center gap-1">
+        <span className="ml-1.5 text-xs text-on-surface-variant/60 flex items-center gap-1">
           <FileText className="w-3 h-3" /> {message.sources.length} source{message.sources.length > 1 ? 's' : ''}
         </span>
       )}
@@ -456,137 +485,97 @@ export default function ChatBubble({ message, isStreaming = false, onRegenerate,
   const showActions = !isUser && !isStreaming && message.content && message.content.trim().length > 0;
   const [expandedSource, setExpandedSource] = useState(null);
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
-    >
-      <div
-        className={`max-w-[85%] md:max-w-[78%] ${
-          isUser
-            ? 'bg-gradient-to-br from-surface-2 to-surface border border-gold-line/60 rounded-2xl rounded-br-sm px-5 py-3.5 shadow-[0_4px_20px_-8px_rgba(0,0,0,0.5)]'
-            : 'bg-gradient-to-br from-surface to-ink-3 border border-line-2 rounded-2xl rounded-bl-sm px-5 py-4 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.03)] relative overflow-hidden'
-        }`}
-      >
-        {!isUser && (
-          <>
-            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-gold via-gold-soft to-transparent opacity-90" />
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-gold/10 border border-gold-line/50">
-                <Sparkles className="h-3.5 w-3.5 text-gold" />
-              </div>
-              <span className="text-gold text-[11px] font-semibold tracking-[0.15em] uppercase">
-                NyayaAI
-              </span>
-              {message.sourceType === 'web' && (
-                <span
-                  title="Answered from general web sources, not the verified statute database"
-                  className="flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30"
-                >
-                  <Globe className="w-3 h-3" /> Web
-                </span>
-              )}
-            </div>
-          </>
-        )}
+  if (isUser) {
+    return (
+      <div className="self-end max-w-[85%] ml-auto mb-4">
+        <div className="bg-slate-800 rounded-lg p-5 rounded-tr-none text-on-surface">
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </div>
+    );
+  }
 
-        <div className={`text-sm ${!isUser ? 'relative chat-bubble-content' : ''}`}>
-          {isUser ? (
-            <p className="text-text-primary leading-relaxed whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <>
-              {renderMarkdown(message.content)}
-              {!isStreaming && onAskAbout && (
-                <TextSelectionToolbar onAskAbout={onAskAbout} />
-              )}
-            </>
+  return (
+    <div className="self-start w-full mb-6">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-8 h-8 rounded-full overflow-hidden bg-white/5 border border-glass-border flex items-center justify-center shrink-0">
+          <img src={logo} alt="NyayaAI" className="w-full h-full object-cover" />
+        </div>
+        <span className="font-label-caps text-label-caps text-secondary">NyayaAI Analysis</span>
+        <SourceBadge sourceType={message.sourceType} />
+      </div>
+      <div className="glass-panel rounded-lg p-6 border-l-4 border-l-secondary ai-think-glow text-on-surface-variant">
+        <div className="text-sm chat-bubble-content">
+          {renderMarkdown(message.content)}
+          {!isStreaming && onAskAbout && (
+            <TextSelectionToolbar onAskAbout={onAskAbout} />
           )}
         </div>
 
-        {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-line/50">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-faint mb-2 flex items-center gap-1.5">
-              {message.sourceType === 'web' ? (
-                <><Globe className="w-3 h-3" /> Web sources</>
-              ) : (
-                <><FileText className="w-3 h-3" /> Legal sources</>
-              )}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {message.sources.map((source, i) => {
-                const web = isWebSource(source);
-
-                if (web) {
-                  // Web results open the original page in a new tab.
-                  return (
-                    <motion.a
-                      key={i}
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={source.text_snippet || source.url}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.1 }}
-                      className="group flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border bg-sky-500/5 text-sky-300 border-sky-500/25 hover:bg-sky-500/10 hover:border-sky-400/40 transition-colors max-w-[16rem]"
-                    >
-                      <Globe className="w-3.5 h-3.5 opacity-70 shrink-0" />
-                      <span className="font-medium truncate">{formatSourceLabel(source)}</span>
-                      <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-90 shrink-0" />
-                    </motion.a>
-                  );
-                }
-
+        {message.sources && message.sources.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-glass-border">
+            {message.sources.map((source, i) => {
+              const web = isWebSource(source);
+              if (web) {
                 return (
-                  <motion.div
+                  <a
                     key={i}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.1 }}
-                    className="relative"
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={source.text_snippet || source.url}
+                    className="px-3 py-1 rounded-full bg-slate-800 text-on-surface-variant font-citation text-citation cursor-pointer hover:bg-slate-700 transition-colors flex items-center gap-1.5"
                   >
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSource(expandedSource === i ? null : i)}
-                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                        expandedSource === i
-                          ? 'bg-gold/10 border-gold/30 text-gold'
-                          : 'bg-surface-2 text-muted-blue border-border/50 hover:border-gold/30 hover:bg-gold/5'
-                      }`}
-                    >
-                      <FileText className="w-3.5 h-3.5 opacity-70" />
-                      <span className="font-medium">{formatSourceLabel(source)}</span>
-                    </button>
-                    <AnimatePresence>
-                      {expandedSource === i && source.text_snippet && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 4, scale: 0.96 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute bottom-full left-0 mb-2 z-30 w-72 p-3 rounded-xl border border-line bg-surface shadow-xl backdrop-blur-xl text-left"
-                        >
-                          <p className="text-xs text-fg-muted leading-relaxed">{source.text_snippet}</p>
-                          <div className="mt-2 flex items-center gap-1.5 text-fg-faint">
-                            <FileText className="w-3 h-3" />
-                            <span className="text-[10px]">Page {source.page_number || 'N/A'}</span>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
+                    <Globe className="w-3 h-3" />
+                    <span className="truncate max-w-[150px]">{formatSourceLabel(source)}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 );
-              })}
-            </div>
+              }
+
+              return (
+                <div key={i} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedSource(expandedSource === i ? null : i)}
+                    className={`px-3 py-1 rounded-full font-citation text-citation cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      expandedSource === i
+                        ? 'bg-gold-light text-on-secondary-container hover:bg-secondary'
+                        : 'bg-slate-800 text-on-surface-variant hover:bg-slate-700'
+                    }`}
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span>{formatSourceLabel(source)}</span>
+                  </button>
+                  <AnimatePresence>
+                    {expandedSource === i && source.text_snippet && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute bottom-full left-0 mb-2 z-30 w-72 p-3 rounded-xl border border-glass-border bg-slate-800 shadow-xl backdrop-blur-xl text-left"
+                      >
+                        <p className="text-xs text-on-surface-variant leading-relaxed">{source.text_snippet}</p>
+                        <div className="mt-2 flex items-center gap-1.5 text-on-surface-variant/70">
+                          <FileText className="w-3 h-3" />
+                          <span className="text-[10px]">Page {source.page_number || 'N/A'}</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         )}
 
         {showActions && (
-          <MessageActions message={message} onRegenerate={onRegenerate} onBranch={onBranch} />
+          <div className="mt-2">
+             <MessageActions message={message} onRegenerate={onRegenerate} onBranch={onBranch} />
+          </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -219,6 +219,50 @@ async def _stream_gemini_response(model: str, messages: List[Dict]) -> AsyncGene
         yield token
 
 
+async def _gemini_generate_vision(
+    model: str,
+    system_text: str,
+    user_text: str,
+    image_b64: str,
+    mime: str,
+    max_tokens: int = 1600,
+) -> str:
+    """Send an image + prompt to a Gemini multimodal model and return the answer."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is required for image understanding")
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{quote(model, safe='')}:generateContent"
+    )
+    payload = {
+        "contents": [{
+            "role": "user",
+            "parts": [
+                {"text": user_text},
+                {"inline_data": {"mime_type": mime or "image/png", "data": image_b64}},
+            ],
+        }],
+        "systemInstruction": {"parts": [{"text": system_text}]},
+        "generationConfig": {"maxOutputTokens": max_tokens},
+    }
+
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        response = await client.post(url, params={"key": GEMINI_API_KEY}, json=payload)
+        response.raise_for_status()
+
+    data = response.json()
+    parts = (
+        data.get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [])
+    )
+    text = "".join(part.get("text", "") for part in parts)
+    if not text:
+        raise RuntimeError(f"Gemini model {model} returned no text for the image")
+    return text
+
+
 async def _complete(messages: List[Dict], max_tokens: int = 200) -> str:
     """Non-streaming single completion across the model chain (for short helper
     tasks like query rewriting). Returns '' if every model fails."""
@@ -472,6 +516,132 @@ async def stream_web_response(
         logger.error(f"Unexpected error in web answer streaming: {e}")
         async for token in _stream_text(OUT_OF_SCOPE_MESSAGE):
             yield token
+
+
+DOCUMENT_SYSTEM_PROMPT = """You are NyayaAI, an expert assistant on Indian law. The user has attached a document and wants help understanding it.
+
+Rules:
+1. Answer the user's question using the attached document as the primary source. Reference or quote the relevant parts.
+2. Apply your knowledge of Indian law to explain implications where helpful, but do NOT invent clauses, sections, or facts that are not in the document.
+3. If the question cannot be answered from the document, say so clearly and offer general guidance.
+4. Use clear, plain language with short headings where useful.
+5. End with a one-line note: "Note: This is general legal information, not legal advice."
+"""
+
+
+async def stream_document_response(
+    query: str,
+    document_text: str,
+    document_name: str | None = None,
+    history: List[Dict] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream an answer grounded in an attached document's text."""
+    doc = (document_text or "").strip()
+    if not doc:
+        async for token in _stream_text(
+            "I couldn't read any text from the attached document. Please try a different file."
+        ):
+            yield token
+        return
+
+    name = document_name or "attached document"
+    question = (query or "").strip() or "Summarise this document and explain its key legal points."
+    user_message = (
+        f"ATTACHED DOCUMENT ({name}):\n\"\"\"\n{doc[:24000]}\n\"\"\"\n\n"
+        f"USER QUESTION: {question}\n\n"
+        "Answer using the document above."
+    )
+    messages = [
+        {"role": "system", "content": DOCUMENT_SYSTEM_PROMPT},
+        *_history_messages(history),
+        {"role": "user", "content": user_message},
+    ]
+
+    try:
+        client = _get_client()
+        last_error: Exception | None = None
+        for provider, model in _model_chain():
+            try:
+                if provider == "groq":
+                    if client is None:
+                        raise RuntimeError("GROQ_API_KEY is required for Groq models")
+                    async for token in _stream_groq_response(client, model, messages):
+                        yield token
+                    return
+                if provider == "gemini":
+                    async for token in _stream_gemini_response(model, messages):
+                        yield token
+                    return
+            except (groq.APIError, httpx.HTTPError, RuntimeError) as e:
+                last_error = e
+                logger.warning("Document-answer model %s:%s failed: %s", provider, model, e)
+
+        if last_error:
+            logger.error("All models failed for document answer: %s", last_error)
+        async for token in _stream_text(
+            "I couldn't analyse the attached document right now. Please try again in a moment."
+        ):
+            yield token
+    except Exception as e:  # noqa: BLE001
+        logger.error("Unexpected error in document answer streaming: %s", e)
+        async for token in _stream_text(
+            "Something went wrong while analysing the document. Please try again."
+        ):
+            yield token
+
+
+VISION_SYSTEM_PROMPT = """You are NyayaAI, an expert assistant on Indian law. The user has attached an image, often a screenshot of a document, notice, message, or legal text.
+
+Rules:
+1. Read any text visible in the image and understand what it shows.
+2. Answer the user's question about the image, applying your knowledge of Indian law where relevant.
+3. If it's a legal notice, form, or document, explain in plain language what it means and what the person may need to do.
+4. Do NOT invent text or details that are not visible in the image. If the image is unclear or unreadable, say so.
+5. End with a one-line note: "Note: This is general legal information, not legal advice."
+"""
+
+
+async def stream_vision_response(
+    query: str,
+    image_b64: str,
+    image_mime: str | None = None,
+    image_name: str | None = None,
+    history: List[Dict] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream an answer about an attached image using a Gemini vision model."""
+    if not GEMINI_API_KEY:
+        async for token in _stream_text(
+            "Image understanding isn't available on this server (it needs a vision-capable "
+            "model). Please attach a PDF or text document instead."
+        ):
+            yield token
+        return
+    if not image_b64:
+        async for token in _stream_text("I couldn't read the attached image. Please try another file."):
+            yield token
+        return
+
+    question = (query or "").strip() or "Explain what this image shows and any legal relevance."
+    mime = image_mime or "image/png"
+
+    last_error: Exception | None = None
+    for provider, model in _model_chain():
+        if provider != "gemini":
+            continue  # only multimodal Gemini models can read images
+        try:
+            text = await _gemini_generate_vision(model, VISION_SYSTEM_PROMPT, question, image_b64, mime)
+            async for token in _stream_text(text):
+                yield token
+            return
+        except (httpx.HTTPError, RuntimeError) as e:
+            last_error = e
+            logger.warning("Vision model %s failed: %s", model, e)
+
+    logger.error("All vision models failed: %s", last_error)
+    async for token in _stream_text(
+        "I couldn't analyse the image right now. Please try again, or attach the document as a PDF or text file."
+    ):
+        yield token
 
 
 def build_web_citations(results: List[Dict]) -> List[Dict]:

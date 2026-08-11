@@ -3,7 +3,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -23,6 +23,8 @@ from backend.retriever import ensure_ready, index_chunks_to_qdrant, retrieve
 from backend.llm import (
     stream_response,
     stream_web_response,
+    stream_document_response,
+    stream_vision_response,
     build_citations,
     build_web_citations,
     looks_like_refusal,
@@ -30,8 +32,10 @@ from backend.llm import (
     OUT_OF_SCOPE_MESSAGE,
 )
 from backend.web_search import web_search
+from backend.extraction import extract_text
 from backend.config import ENABLE_WEB_SEARCH
 from backend.auth import router as auth_router
+from backend.rate_limit import upload_rate_limit
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -149,6 +153,35 @@ def _emit_text(text: str):
             yield _token_event(piece)
 
 
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@app.post("/extract", dependencies=[Depends(upload_rate_limit)])
+async def extract(file: UploadFile = File(...), user: str = Depends(get_current_user)):
+    """Extract plain text from an uploaded PDF / DOCX / text document."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+
+    try:
+        result = extract_text(file.filename or "", data)
+    except ValueError as exc:
+        # Expected, user-facing reasons (unsupported type, scanned PDF, etc.)
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Text extraction failed for %s: %s", file.filename, exc)
+        raise HTTPException(status_code=500, detail="Could not extract text from this file.")
+
+    return {
+        "filename": file.filename,
+        "text": result["text"],
+        "chars": len(result["text"]),
+        "truncated": result["truncated"],
+    }
+
+
 def _build_search_query(query: str, history) -> str:
     """Resolve follow-up references (e.g. "cases for it") by prepending the
     topic from recent user turns, so retrieval and web search aren't blind."""
@@ -170,12 +203,18 @@ async def chat(req: ChatRequest, user: str = Depends(get_current_user)):
     history = req.history or []
     history_dicts = [{"role": h.role, "content": h.content} for h in history]
     search_query = _build_search_query(req.query, history)
+    has_image = bool(req.image_data and req.image_data.strip())
+    has_attachment = bool(req.attachment_text and req.attachment_text.strip())
 
-    try:
-        chunks, confidence = await retrieve(search_query, req.law_filter)
-    except Exception as exc:
-        logger.warning("Chat retrieval failed, falling back to empty context: %s", exc)
-        chunks, confidence = [], "LOW"
+    if has_image or has_attachment:
+        # Image or document present -> answer from it; skip KB/web retrieval.
+        chunks, confidence = [], "IMG" if has_image else "DOC"
+    else:
+        try:
+            chunks, confidence = await retrieve(search_query, req.law_filter)
+        except Exception as exc:
+            logger.warning("Chat retrieval failed, falling back to empty context: %s", exc)
+            chunks, confidence = [], "LOW"
 
     # Lazily rewrite the question into a focused Indian-law web query, but only
     # when a web branch is actually reached (avoids an LLM call for KB answers).
@@ -195,6 +234,30 @@ async def chat(req: ChatRequest, user: str = Depends(get_current_user)):
         citations: list = []
         answer_confidence = confidence
         try:
+            if has_image:
+                # Answer about the attached image via a vision model.
+                source = "image"
+                answer_confidence = "IMG"
+                async for token in stream_vision_response(
+                    req.query, req.image_data, req.image_mime, req.image_name, history_dicts
+                ):
+                    yield _token_event(token)
+                yield f"data: {json.dumps({'type': 'citations', 'citations': [], 'confidence': answer_confidence, 'source': source})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            if has_attachment:
+                # Answer grounded in the attached document.
+                source = "document"
+                answer_confidence = "DOC"
+                async for token in stream_document_response(
+                    req.query, req.attachment_text, req.attachment_name, history_dicts
+                ):
+                    yield _token_event(token)
+                yield f"data: {json.dumps({'type': 'citations', 'citations': [], 'confidence': answer_confidence, 'source': source})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             kb_has_context = bool(chunks) and confidence != "LOW"
 
             if kb_has_context:
