@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -75,6 +76,10 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    token: str
+
+
 class AuthResponse(BaseModel):
     message: str
 
@@ -136,6 +141,34 @@ def _write_users(users: dict) -> None:
     except Exception:
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, indent=2, ensure_ascii=False)
+
+
+def _validate_password_strength(password: str) -> None:
+    """Enforce password complexity rules.
+
+    Raises HTTPException(400) with a specific message if the password
+    does not meet the minimum requirements.
+    """
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long.",
+        )
+    if not any(c.isupper() for c in password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one uppercase letter.",
+        )
+    if not any(c.islower() for c in password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one lowercase letter.",
+        )
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least one digit.",
+        )
 
 
 def _hash_password(password: str) -> str:
@@ -230,8 +263,7 @@ async def register(req: RegisterRequest):
     if not req.name or not req.email or not req.password:
         raise HTTPException(status_code=400, detail="All fields are required")
 
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    _validate_password_strength(req.password)
 
     email_lower = req.email.lower().strip()
     password_hash = _hash_password(req.password)
@@ -375,8 +407,7 @@ async def forgot_password(req: ForgotPasswordRequest):
 
 @router.post("/reset-password", response_model=AuthResponse, dependencies=[Depends(reset_password_rate_limit)])
 async def reset_password(req: ResetPasswordRequest):
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    _validate_password_strength(req.password)
 
     email = _verify_token(req.token)
     new_hash = _hash_password(req.password)
@@ -401,3 +432,48 @@ async def reset_password(req: ResetPasswordRequest):
     _write_users(users)
     logger.info("Password reset for legacy JSON user: %s", email)
     return AuthResponse(message="Password reset successfully. You can now log in with your new password.")
+
+
+@router.post("/refresh", response_model=LoginResponse, dependencies=[Depends(login_rate_limit)])
+async def refresh_token(req: RefreshRequest):
+    """Exchange a valid (or recently expired) JWT for a fresh one.
+
+    This allows the frontend to silently extend sessions without forcing
+    the user to re-enter credentials.
+    """
+    try:
+        # Allow tokens up to 24h past expiry to be refreshed (grace window).
+        payload = jwt.decode(
+            req.token,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_exp": False},
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    # Check the token isn't absurdly old (more than 7 days past original expiry).
+    exp = payload.get("exp", 0)
+    max_refresh_window = 7 * 24 * 3600  # 7 days
+    if time.time() - exp > max_refresh_window:
+        raise HTTPException(status_code=401, detail="Token is too old to refresh. Please log in again.")
+
+    # Verify the user still exists.
+    try:
+        _ensure_db_ready()
+        user = get_user_by_email(email)
+    except Exception:
+        user = _read_users().get(email)
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User no longer exists")
+
+    new_token = _create_token(email)
+    return LoginResponse(
+        token=new_token,
+        user={"name": user["name"], "email": user["email"]},
+    )

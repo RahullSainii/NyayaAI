@@ -1,8 +1,12 @@
+import logging
 import os
+import sys
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 load_dotenv()
+
+_log = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -81,10 +85,12 @@ if not JWT_SECRET:
         "Set a long, random JWT_SECRET in your environment / .env file "
         "(e.g. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`)."
     )
-if len(JWT_SECRET) < 16:
-    import logging as _logging
-    _logging.getLogger(__name__).warning(
-        "JWT_SECRET is shorter than 16 characters; use a longer random secret in production."
+if len(JWT_SECRET) < 32:
+    _log.warning(
+        "JWT_SECRET is shorter than 32 characters (%d chars). "
+        "Use a longer random secret in production "
+        "(e.g. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`)",
+        len(JWT_SECRET),
     )
 
 JWT_ALGORITHM = "HS256"
@@ -119,3 +125,55 @@ MAX_QUERY_CHARS = int(os.getenv("MAX_QUERY_CHARS", "4000"))
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "12"))
 
 USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
+
+
+# ---------------------------------------------------------------------------
+# Startup validation
+# ---------------------------------------------------------------------------
+
+def validate_config_on_startup() -> None:
+    """Run once at import-time to catch misconfigurations early.
+
+    * Hard errors  → the app refuses to start.
+    * Warnings     → the app starts but logs an actionable message.
+    """
+    # -- Hard requirements (already enforced above for JWT_SECRET) -----------
+    # Nothing extra to add here; JWT_SECRET crash-guard is at module level.
+
+    # -- Soft warnings -------------------------------------------------------
+    if not GROQ_API_KEY and not GEMINI_API_KEY:
+        _log.warning(
+            "Neither GROQ_API_KEY nor GEMINI_API_KEY is set. "
+            "The chat endpoint will not be able to generate responses."
+        )
+
+    if not DATABASE_URL:
+        _log.warning(
+            "DATABASE_URL is not set — falling back to local SQLite at %s. "
+            "This is fine for development but NOT suitable for production.",
+            DATABASE_PATH,
+        )
+
+    if CORS_ALLOW_LOCALHOST and FRONTEND_ORIGIN and "localhost" not in FRONTEND_ORIGIN:
+        _log.warning(
+            "CORS_ALLOW_LOCALHOST is enabled while FRONTEND_ORIGIN is set to a "
+            "non-localhost URL (%s). Set CORS_ALLOW_LOCALHOST=false in production.",
+            FRONTEND_ORIGIN,
+        )
+
+    if ADMIN_API_KEY and len(ADMIN_API_KEY) < 16:
+        _log.warning(
+            "ADMIN_API_KEY is very short (%d chars). Use a strong random key.",
+            len(ADMIN_API_KEY),
+        )
+
+    _log.info(
+        "Config validated — CORS origins: %s | DB: %s | Web search: %s",
+        FRONTEND_ORIGIN or "(localhost only)",
+        "PostgreSQL" if DATABASE_URL else "SQLite",
+        "enabled" if ENABLE_WEB_SEARCH else "disabled",
+    )
+
+
+# Run validation at module load (i.e. when the app starts).
+validate_config_on_startup()

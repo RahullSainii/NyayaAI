@@ -128,8 +128,11 @@ async def ingest():
             files_processed=len(set(c.source_file for c in chunks)),
         )
     except Exception as e:
-        logger.error(f"Ingestion failed: {e}")
-        return IngestResponse(status=f"error: {str(e)}", chunks_count=0, files_processed=0)
+        logger.exception("Ingestion failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Ingestion failed. Check server logs for details.",
+        )
 
 
 async def _safe_web_search(query: str) -> list:
