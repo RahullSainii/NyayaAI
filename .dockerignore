@@ -1,16 +1,83 @@
+# ==========================================
+# Secrets — NEVER bake these into images
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# Version Control
+# ==========================================
+.git/
+.gitignore
+
+# ==========================================
+# Python dev/build artifacts
+# ==========================================
 __pycache__/
 *.pyc
 *.pyo
-.env
-.git/
-.gitignore
+*.pyd
+*.egg-info/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ==========================================
+# Node dev artifacts
+# ==========================================
 node_modules/
 dist/
 .vite/
-venv/
-.venv/
-*.egg-info/
-.pytest_cache/
+
+# ==========================================
+# Testing (not needed in production images)
+# ==========================================
+tests/
+test.py
+test_*.py
+pytest.ini
+conftest.py
+
+# ==========================================
+# Documentation (not needed in images)
+# ==========================================
 README.md
 IMPLEMENTATION_STEPS.md
 PLAN.md
+CONTRIBUTING.md
+LICENSE
+*.md
+
+# ==========================================
+# IDE & OS
+# ==========================================
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ==========================================
+# Database files (should be mounted as volumes, not baked in)
+# ==========================================
+*.db
+data/*.db
+backend/users.json
+
+# ==========================================
+# CI/CD configs
+# ==========================================
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# ==========================================
+# Misc
+# ==========================================
+*.log
+docker-compose*.yml
