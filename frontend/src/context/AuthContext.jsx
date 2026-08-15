@@ -1,17 +1,76 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../lib/api';
 
 const AuthContext = createContext(null);
+
+/**
+ * Decode a JWT payload without any library (browser-only).
+ * Returns null if the token is malformed.
+ */
+function decodeJwtPayload(token) {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns true if the token's `exp` claim is in the past (or missing).
+ */
+function isTokenExpired(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  // 60-second grace buffer so we refresh slightly before actual expiry.
+  return Date.now() >= (payload.exp * 1000) - 60_000;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Attempt to silently refresh an expired token using the /auth/refresh
+  // endpoint added in Day 2. Falls back to logout if the refresh fails.
+  const tryRefreshToken = useCallback(async (currentToken) => {
+    try {
+      const res = await fetch(apiUrl('/auth/refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: currentToken }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('nyayaai_token', data.token);
+      localStorage.setItem('nyayaai_user', JSON.stringify(data.user));
+      return data.token;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // On mount: restore session, checking expiry.
   useEffect(() => {
     const savedUser = localStorage.getItem('nyayaai_user');
     const savedToken = localStorage.getItem('nyayaai_token');
+
     if (savedUser && savedToken) {
+      if (isTokenExpired(savedToken)) {
+        // Token is expired — try a silent refresh.
+        tryRefreshToken(savedToken).then((newToken) => {
+          if (!newToken) {
+            // Refresh failed — force re-login.
+            localStorage.removeItem('nyayaai_user');
+            localStorage.removeItem('nyayaai_token');
+          }
+          setLoading(false);
+        });
+        return; // loading stays true until refresh completes
+      }
+
       try {
         setUser(JSON.parse(savedUser));
         setToken(savedToken);
@@ -21,7 +80,7 @@ export function AuthProvider({ children }) {
       }
     }
     setLoading(false);
-  }, []);
+  }, [tryRefreshToken]);
 
   const login = async (email, password) => {
     const res = await fetch(apiUrl('/auth/login'), {

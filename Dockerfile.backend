@@ -1,22 +1,36 @@
+# ── Build stage: install Python dependencies ────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ── Runtime stage: lean production image ─────────────────────────────────
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
+# System deps needed at runtime (psycopg2-binary, etc.)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy only installed packages from the builder stage.
+COPY --from=builder /install /usr/local
 
-# Copy the rest of the app
-COPY . .
+# Copy application code (data/ is mounted as a volume, NOT baked in).
+COPY backend/ ./backend/
 
-# Expose the FastAPI port
+# Security: run as a non-root user.
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Bind to the port Render provides via $PORT (falls back to 8000 locally).
 # Shell form is required so ${PORT} is expanded at runtime.
