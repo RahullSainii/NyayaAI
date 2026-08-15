@@ -809,7 +809,11 @@ function Chat() {
         )}
 
         {/* Chat Canvas */}
-        <div className={`flex-1 min-h-0 overflow-y-auto p-4 md:p-8 ${!sidebarOpen ? 'mt-16' : ''} md:mt-0 flex flex-col items-center chat-scroll`}>
+        <div 
+          className={`flex-1 min-h-0 overflow-y-auto p-4 md:p-8 ${!sidebarOpen ? 'mt-16' : ''} md:mt-0 flex flex-col items-center chat-scroll`}
+          aria-live="polite"
+          aria-atomic="false"
+        >
           <div className="w-full max-w-[800px] flex flex-col gap-8 pb-6">
             <AnimatePresence initial={false}>
               {messages.map((message, index) => {
