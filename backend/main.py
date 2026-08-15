@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -37,7 +38,16 @@ from backend.config import ENABLE_WEB_SEARCH
 from backend.auth import router as auth_router
 from backend.rate_limit import upload_rate_limit
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+# Structured JSON logging for production log aggregation.
+logging.basicConfig(
+    level=logging.INFO,
+    format=json.dumps({
+        "ts": "%(asctime)s",
+        "level": "%(levelname)s",
+        "logger": "%(name)s",
+        "msg": "%(message)s",
+    }),
+)
 logger = logging.getLogger(__name__)
 
 
@@ -169,7 +179,7 @@ async def extract(file: UploadFile = File(...), user: str = Depends(get_current_
         raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
 
     try:
-        result = extract_text(file.filename or "", data)
+        result = await asyncio.to_thread(extract_text, file.filename or "", data)
     except ValueError as exc:
         # Expected, user-facing reasons (unsupported type, scanned PDF, etc.)
         raise HTTPException(status_code=422, detail=str(exc))
