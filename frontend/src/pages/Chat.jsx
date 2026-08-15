@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Bot, MessageSquare, Circle, Sparkles, X } from 'lucide-react'
 import ChatBubble from '../components/ChatBubble'
 import TypingIndicator from '../components/TypingIndicator'
-import { apiUrl } from '../lib/api'
-import { Bot, Menu, MessageSquare, Plus, Send, Sparkles, X, ChevronLeft, Circle, Mic, MicOff } from 'lucide-react'
+import ChatSidebar from '../components/ChatSidebar'
+import ChatInputArea from '../components/ChatInputArea'
+import DisclaimerModal from '../components/DisclaimerModal'
 import logo from '../assets/nyaya.jpeg'
 
 const WELCOME_MESSAGE = {
@@ -778,85 +780,16 @@ function Chat() {
       </AnimatePresence>
 
       {/* SideNavBar */}
-      <motion.nav
-        initial={{ x: '-100%' }}
-        animate={{ 
-          x: sidebarOpen ? 0 : '-100%',
-          width: sidebarOpen ? 280 : 0,
-          opacity: sidebarOpen ? 1 : 0
-        }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
-        className="fixed md:relative left-0 top-0 h-full w-[280px] flex flex-col z-40 bg-slate-800 border-r border-glass-border shrink-0 overflow-hidden"
-      >
-        <div className="w-[280px] flex flex-col h-full">
-          {/* Header */}
-          <div className="p-6 flex items-center gap-4 border-b border-glass-border shrink-0">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-white/5 border border-glass-border flex items-center justify-center shrink-0">
-              <img src={logo} alt="NyayaAI" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h1 className="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface">NyayaAI</h1>
-              <p className="font-label-caps text-label-caps text-on-surface-variant">Illuminated Justice</p>
-            </div>
-            <button 
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden ml-auto p-1.5 text-on-surface-variant hover:text-on-surface transition-colors"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div className="flex-1 py-4 flex flex-col overflow-y-auto">
-            <button
-              onClick={handleNewChat}
-              className="mx-2 mb-2 flex items-center gap-3 px-3 py-2.5 rounded-lg text-secondary font-bold bg-white/5 hover:bg-white/10 transition-all duration-200 ease-in-out text-left"
-            >
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add_comment</span>
-              <span className="font-label-caps text-label-caps truncate">New Consultation</span>
-            </button>
-
-            <div className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/50">
-              Recents
-            </div>
-
-            {recentSessions.length === 0 && (
-              <p className="px-4 py-2 text-xs text-on-surface-variant/40">No conversations yet.</p>
-            )}
-            {recentSessions.map((session) => renderSessionRow(session, false))}
-
-            {archivedSessions.length > 0 && (
-              <div className="mt-2 border-t border-glass-border pt-2">
-                <button
-                  onClick={() => setShowArchived((v) => !v)}
-                  className="w-full flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/50 hover:text-on-surface-variant transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[16px]">{showArchived ? 'expand_more' : 'chevron_right'}</span>
-                  Archived ({archivedSessions.length})
-                </button>
-                {showArchived && archivedSessions.map((session) => renderSessionRow(session, true))}
-              </div>
-            )}
-          </div>
-
-          {/* Footer / CTA */}
-          <div className="p-4 border-t border-glass-border shrink-0">
-            <button className="w-full py-3 mb-4 rounded bg-secondary text-on-secondary font-label-caps text-label-caps hover:bg-secondary-container transition-colors">
-              Upgrade to Pro
-            </button>
-            <div className="flex flex-col gap-1">
-              <a className="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-white/5 transition-colors" href="/">
-                <span className="material-symbols-outlined">home</span>
-                <span className="font-label-caps text-label-caps">Home</span>
-              </a>
-              <a className="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-white/5 transition-colors" href="#">
-                <span className="material-symbols-outlined">settings</span>
-                <span className="font-label-caps text-label-caps">Settings</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </motion.nav>
+      <ChatSidebar
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        handleNewChat={handleNewChat}
+        recentSessions={recentSessions}
+        archivedSessions={archivedSessions}
+        renderSessionRow={renderSessionRow}
+        showArchived={showArchived}
+        setShowArchived={setShowArchived}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen relative min-w-0">
@@ -952,112 +885,22 @@ function Chat() {
         </div>
 
         {/* Input Area (in-flow so it never overlaps the last message's actions) */}
-        <div className="w-full p-4 md:p-6 bg-[#020617]/95 backdrop-blur-sm border-t border-glass-border flex justify-center shrink-0 z-20">
-          <div className="w-full max-w-[800px]">
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2">
-                {attachments.map((a) => (
-                  <div
-                    key={a.id}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${
-                      a.error
-                        ? 'bg-red-500/10 border-red-500/30 text-red-300'
-                        : a.loading
-                          ? 'bg-slate-800/60 border-glass-border text-on-surface-variant/70'
-                          : 'bg-slate-800 border-glass-border text-on-surface-variant'
-                    }`}
-                  >
-                    {a.isImage && a.dataUrl ? (
-                      <img src={a.dataUrl} alt="" className="w-6 h-6 rounded object-cover" />
-                    ) : (
-                      <span className={`material-symbols-outlined text-sm ${a.loading ? 'animate-spin' : ''}`}>
-                        {a.loading ? 'progress_activity' : a.error ? 'error' : a.isImage ? 'image' : 'description'}
-                      </span>
-                    )}
-                    <span className="truncate max-w-[160px]">{a.name}</span>
-                    {a.loading && <span className="text-on-surface-variant/60">processing…</span>}
-                    {a.truncated && <span className="text-on-surface-variant/60">(truncated)</span>}
-                    {a.error && <span className="truncate max-w-[220px]">— {a.error}</span>}
-                    {!a.loading && (
-                      <button
-                        onClick={() => removeAttachment(a.id)}
-                        className="hover:text-on-surface transition-colors"
-                        aria-label={`Remove ${a.name}`}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="glass-panel rounded-xl p-2 flex items-end gap-2 shadow-2xl relative overflow-hidden group focus-within:border-secondary/50 transition-colors">
-              <div className="absolute inset-0 bg-secondary/5 blur-xl pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity"></div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.rtf,.html,.htm,.xml,.yaml,.yml,text/*,image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
-                className="hidden"
-                onChange={handleFilesSelected}
-              />
-              <button
-                type="button"
-                onClick={handleAttachClick}
-                disabled={isLoading}
-                title="Attach a text document"
-                aria-label="Attach a text document"
-                className="p-3 text-on-surface-variant hover:text-secondary transition-colors shrink-0 disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined">attach_file</span>
-              </button>
-
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={handleKeyDown}
-                className="w-full bg-transparent border-none focus:ring-0 text-on-surface placeholder-on-surface-variant resize-none max-h-[150px] min-h-[44px] py-3 text-sm focus:outline-none z-10 relative"
-                placeholder="Draft a consultation query or cite a provision..."
-                rows={1}
-              />
-
-              <div className="flex gap-1 shrink-0 pb-1 pr-1 z-10 relative items-center">
-                {input.length > 200 && (
-                  <span className="text-xs text-on-surface-variant mr-2">
-                    {input.length}
-                  </span>
-                )}
-                {!recordingNotSupported && (
-                  <button
-                    onClick={toggleRecording}
-                    disabled={isLoading}
-                    className={`p-2 transition-colors rounded-lg ${
-                      isRecording
-                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        : 'text-on-surface-variant hover:text-secondary hover:bg-white/5'
-                    }`}
-                    aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-                  >
-                    {isRecording ? <MicOff size={18} /> : <span className="material-symbols-outlined">mic</span>}
-                  </button>
-                )}
-                <button
-                  onClick={handleSend}
-                  disabled={(!input.trim() && attachments.filter((a) => a.content || a.imageData).length === 0) || isLoading || attachments.some((a) => a.loading)}
-                  className="p-2 bg-secondary text-on-secondary rounded-lg hover:bg-secondary-container transition-colors shadow-lg disabled:opacity-50 disabled:bg-surface-variant disabled:text-on-surface-variant"
-                  aria-label="Send message"
-                >
-                  <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
-                </button>
-              </div>
-            </div>
-            <div className="text-center mt-3">
-              <span className="font-label-caps text-[10px] text-on-surface-variant/50">NyayaAI can make mistakes. Verify critical legal information.</span>
-            </div>
-          </div>
-        </div>
+        <ChatInputArea
+          input={input}
+          setInput={setInput}
+          handleKeyDown={handleKeyDown}
+          handleSend={handleSend}
+          isLoading={isLoading}
+          attachments={attachments}
+          handleAttachClick={handleAttachClick}
+          handleFilesSelected={handleFilesSelected}
+          removeAttachment={removeAttachment}
+          isRecording={isRecording}
+          recordingNotSupported={recordingNotSupported}
+          toggleRecording={toggleRecording}
+          textareaRef={textareaRef}
+          fileInputRef={fileInputRef}
+        />
       </main>
 
       {/* Session "..." options menu (fixed so it escapes the sidebar's overflow) */}
@@ -1085,48 +928,7 @@ function Chat() {
       })()}
 
       {/* One-time legal disclaimer consent */}
-      <AnimatePresence>
-        {!disclaimerAck && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center bg-background/85 backdrop-blur-sm p-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-              className="max-w-md w-full glass-panel border border-secondary/30 rounded-2xl p-6 shadow-2xl"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-secondary/10 border border-secondary/30">
-                  <Sparkles className="h-4 w-4 text-secondary" />
-                </div>
-                <h2 className="font-headline-lg-mobile text-lg font-semibold text-on-surface">Before you begin</h2>
-              </div>
-              <p className="text-sm text-on-surface-variant leading-relaxed mb-3">
-                NyayaAI is an AI assistant that provides <strong className="text-on-surface">general legal
-                information</strong> about Indian law for educational purposes. It is
-                <strong className="text-on-surface"> not a lawyer</strong> and its responses may be
-                incomplete or inaccurate.
-              </p>
-              <p className="text-sm text-on-surface-variant leading-relaxed mb-5">
-                Nothing here creates a lawyer-client relationship or constitutes legal advice.
-                For decisions about your specific situation, consult a qualified advocate.
-              </p>
-              <button
-                type="button"
-                onClick={acceptDisclaimer}
-                className="w-full bg-secondary text-on-secondary font-semibold py-2.5 rounded-xl hover:bg-secondary-container transition-colors"
-              >
-                I understand
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DisclaimerModal ack={disclaimerAck} onAccept={acceptDisclaimer} />
     </div>
   )
 }
