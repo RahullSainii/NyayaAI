@@ -1,232 +1,200 @@
-# NyayaAI
+# NyayaAI — AI Legal Assistant for Indian Law
 
-NyayaAI is an AI-powered Indian legal assistant that helps users understand legal queries in plain language, map IPC sections to BNS sections, and retrieve grounded answers from official/legal source material using a hybrid RAG pipeline.
+> Navigate the Bharatiya Nyaya Sanhita (BNS), Indian Penal Code (IPC), and allied statutes with AI-powered, citation-backed answers.
 
-## Features
+[![CI](https://github.com/RahullSainii/NyayaAI/actions/workflows/ci.yml/badge.svg)](https://github.com/RahullSainii/NyayaAI/actions/workflows/ci.yml)
 
-- Plain-language legal Q&A
-- IPC to BNS section mapping
-- Hybrid retrieval using BM25 + vector search
-- Citation-backed answers
-- User authentication with Postgres
-- PDF ingestion for legal reference documents
-- React frontend with a polished UI
-- FastAPI backend with streaming responses
+---
 
-## Tech Stack
+## Overview
 
-- Frontend: React, Vite, Framer Motion
-- Backend: FastAPI, Python
-- Database: Neon Postgres
-- Vector Search: Qdrant
-- LLM: Groq
-- PDF parsing: pdfplumber
-- Retrieval: BM25 + sentence-transformers
+NyayaAI is a full-stack legal assistant that helps citizens, students, and professionals understand Indian law in plain language. It uses a **hybrid RAG pipeline** (BM25 + semantic search) grounded in verified statute text, with automatic IPC-to-BNS section mapping.
 
-## Project Structure
+### Key Features
 
-```text
-NyayaAI/
-  backend/
-  frontend/
-  data/
-  docker-compose.yml
-  Dockerfile.backend
-  Dockerfile.frontend
-  nginx.conf
+| Feature | Description |
+|---|---|
+| **Legal Q&A** | Ask questions in natural language; get answers grounded in actual statute text with section citations |
+| **IPC ↔ BNS Mapping** | Instantly translate between old IPC and new BNS section numbers |
+| **Document Analysis** | Upload PDFs, DOCX, or text files and get legal analysis of their contents |
+| **Image Understanding** | Attach screenshots of legal notices or documents for AI interpretation |
+| **Web Search Fallback** | When the knowledge base can't answer, the system searches authoritative Indian legal sources |
+| **Voice Input** | Dictate your legal questions using browser speech recognition |
+| **Multi-session Chat** | Persistent chat history with rename, pin, archive, and branch |
+
+---
+
+## Architecture
+
+```
+┌──────────────┐     ┌──────────────────────────────────┐     ┌──────────────┐
+│   React SPA  │────▶│  FastAPI Backend                 │────▶│   Qdrant     │
+│  (Vite)      │     │  ├─ /chat  (SSE streaming)       │     │  (vectors)   │
+│              │◀────│  ├─ /map   (IPC → BNS)           │     └──────────────┘
+│  Components: │     │  ├─ /auth  (JWT + bcrypt)        │
+│  - Chat      │     │  ├─ /extract (PDF/DOCX → text)   │     ┌──────────────┐
+│  - Mapping   │     │  └─ /health (deep health check)  │────▶│  PostgreSQL  │
+│  - Landing   │     │                                  │     │  (users)     │
+│  - Auth      │     │  LLM Chain:                      │     └──────────────┘
+└──────────────┘     │  Groq → Gemini (auto-fallback)   │
+                     └──────────────────────────────────┘
 ```
 
-## How It Works
+### Tech Stack
 
-1. PDFs are placed in the `data/` folder.
-2. The ingestion pipeline extracts and chunks the text.
-3. Chunks are stored in the database with metadata.
-4. Embeddings are indexed in Qdrant.
-5. User queries are retrieved with a hybrid search strategy.
-6. The LLM generates a concise answer with citations.
+- **Frontend**: React 19, Vite, Tailwind CSS, Framer Motion
+- **Backend**: FastAPI, Python 3.11+
+- **Database**: PostgreSQL (Neon) — SQLite fallback for development
+- **Vector DB**: Qdrant Cloud
+- **LLMs**: Groq (primary) → Gemini (fallback), with automatic model chain
+- **CI/CD**: GitHub Actions (lint → test → build → docker)
 
-## Local Setup
+---
 
-### 1) Clone the repo
+## Quick Start
 
-```powershell
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- Docker & Docker Compose (for containerized deployment)
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/RahullSainii/NyayaAI.git
 cd NyayaAI
+cp .env.example .env
+# Edit .env with your API keys and database credentials
 ```
 
-### 2) Backend environment variables
+### 2. Run with Docker (recommended)
 
-Create a `.env` file in the project root:
-
-```env
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=openai/gpt-oss-20b
-GEMINI_API_KEY=your_gemini_api_key
-LLM_FALLBACKS=gemini:gemini-flash-lite-latest,gemini:gemini-flash-latest,gemini:gemini-3.5-flash,gemini:gemini-2.0-flash,gemini:gemini-2.5-flash
-
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=
-
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
-
-JWT_SECRET=your_long_random_secret
-
-EMAIL_FROM=you@example.com
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=you@example.com
-SMTP_PASS=your_app_password
-SMTP_SECURE=false
-
-ENABLE_VECTOR_MODELS=false
-ENABLE_PDF_INGESTION=true
-```
-
-### 3) Run with Docker
-
-```powershell
+```bash
 docker-compose up --build
 ```
 
-This starts:
+This starts Qdrant (`:6333`), the backend (`:8000`), and nginx (`:80`).
 
-- Qdrant on `6333`
-- Backend on `8000`
-- Frontend on `80`
+### 3. Run locally (development)
 
-### 4) Run backend manually
-
-```powershell
-cd backend
-python -m uvicorn backend.main:app --reload --port 8000
+**Backend:**
+```bash
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --port 8000
 ```
 
-### 5) Run frontend manually
-
-```powershell
+**Frontend:**
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Production Build
+---
 
-### Frontend
+## Environment Variables
 
-```powershell
-cd frontend
-npm run build
-```
+| Variable | Required | Description |
+|---|:---:|---|
+| `JWT_SECRET` | ✅ | Random secret for JWT signing (min 32 chars) |
+| `GROQ_API_KEY` | ✅ | Primary LLM provider |
+| `GEMINI_API_KEY` | ⬡ | Fallback LLM + vision model |
+| `QDRANT_URL` | ✅ | Qdrant instance URL |
+| `QDRANT_API_KEY` | ⬡ | Qdrant Cloud API key |
+| `DATABASE_URL` | ⬡ | PostgreSQL connection string (falls back to SQLite) |
+| `FRONTEND_ORIGIN` | ✅ | CORS allowed origin for production |
+| `VITE_API_BASE_URL` | ✅ | Backend URL for the frontend to call |
+| `ADMIN_API_KEY` | ⬡ | Key to access `/ingest` endpoint |
+| `TAVILY_API_KEY` | ⬡ | Tavily search API (best web search quality) |
+| `SERPER_API_KEY` | ⬡ | Serper Google search API |
 
-### Backend
+> ✅ = required for production &nbsp; ⬡ = optional / has fallback
 
-```powershell
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
-```
+See [`.env.example`](.env.example) for the full list with defaults.
+
+---
 
 ## API Endpoints
 
-- `GET /health` - backend health check
-- `POST /chat` - streaming legal Q&A
-- `GET /map?ipc=...` - IPC to BNS mapping
-- `POST /ingest` - ingest PDFs from `data/`
-- `POST /auth/register` - create user
-- `POST /auth/login` - login user
-- `POST /auth/forgot-password` - password reset flow
-- `POST /auth/reset-password` - set new password
+| Method | Path | Auth | Description |
+|---|---|:---:|---|
+| `GET` | `/health` | ❌ | Deep health check (API + Qdrant + DB) |
+| `POST` | `/chat` | ✅ | Streaming legal Q&A (SSE) |
+| `GET` | `/map?ipc=302` | ❌ | IPC → BNS section mapping |
+| `POST` | `/extract` | ✅ | Extract text from PDF/DOCX uploads |
+| `POST` | `/ingest` | 🔑 | Re-index PDFs from `data/` |
+| `POST` | `/auth/register` | ❌ | Create account |
+| `POST` | `/auth/login` | ❌ | Login (returns JWT) |
+| `POST` | `/auth/refresh` | ✅ | Refresh JWT |
+| `POST` | `/auth/google` | ❌ | Google OAuth login |
+| `POST` | `/auth/forgot-password` | ❌ | Send password reset email |
+| `POST` | `/auth/reset-password` | ❌ | Reset password with token |
 
-## Deployment Notes
+> ✅ = JWT required &nbsp; 🔑 = Admin API key required
 
-Recommended free deployment setup:
+---
 
-- Backend: Render Web Service
-- Frontend: Render Static Site
-- Database: Neon Postgres
-- Vector DB: Qdrant Cloud or a separate hosted Qdrant instance
+## Testing
 
-Backend Render settings:
+```bash
+# Backend tests
+pip install -r backend/requirements-dev.txt
+pytest
 
-```text
-Environment: Docker
-Dockerfile Path: Dockerfile.backend
-Root Directory: leave blank
+# Frontend tests
+cd frontend
+npm run test
 ```
 
-Frontend Render settings:
+---
 
-```text
-Environment: Static Site
-Root Directory: frontend
-Build Command: npm install && npm run build
-Publish Directory: dist
+## Deployment
+
+### Render (recommended for free tier)
+
+| Service | Type | Config |
+|---|---|---|
+| Backend | Web Service (Docker) | Dockerfile: `Dockerfile.backend` |
+| Frontend | Static Site | Build: `npm ci && npm run build`, Publish: `dist` |
+| Database | Neon PostgreSQL | Set `DATABASE_URL` env var |
+| Vector DB | Qdrant Cloud | Set `QDRANT_URL` + `QDRANT_API_KEY` |
+
+> **Important**: Set `CORS_ALLOW_LOCALHOST=false` in production.
+
+---
+
+## Project Structure
+
+```
+NyayaAI/
+├── backend/
+│   ├── llm/              # LLM package (client, prompts, streams, citations)
+│   ├── main.py            # FastAPI app, routes, middleware
+│   ├── auth.py            # JWT auth, registration, password reset
+│   ├── retriever.py       # Hybrid BM25 + vector search
+│   ├── config.py          # Environment config with validation
+│   ├── web_search.py      # Multi-provider web search fallback
+│   ├── extraction.py      # PDF/DOCX text extraction
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── pages/         # Chat, Landing, AuthPage, Mapping
+│   │   ├── components/    # ChatSidebar, ChatInputArea, ChatBubble, etc.
+│   │   ├── context/       # AuthContext (JWT management)
+│   │   └── lib/           # Centralized API layer
+│   └── vite.config.js
+├── tests/                 # pytest integration tests
+├── data/                  # PDF source documents for ingestion
+├── docker-compose.yml     # Full-stack container orchestration
+├── Dockerfile.backend     # Multi-stage, non-root backend image
+├── Dockerfile.frontend    # Multi-stage nginx frontend image
+├── nginx.conf             # Production nginx with security headers
+└── .github/workflows/     # CI pipeline
 ```
 
-Frontend environment variable:
+---
 
-```env
-VITE_API_BASE_URL=https://your-backend.onrender.com
-```
+## License
 
-Backend environment variable for CORS:
-
-```env
-FRONTEND_ORIGIN=https://your-frontend.onrender.com
-```
-
-Important:
-
-- Keep all secrets in environment variables.
-- Do not commit `.env`.
-- Make sure the backend can reach the Postgres host and Qdrant host.
-- Pin Python to 3.11 on Render using `runtime.txt` so package installs do not try to build for Python 3.14.
-
-## Push to GitHub
-
-### 1) Initialize git
-
-```powershell
-git init
-```
-
-### 2) Check status
-
-```powershell
-git status
-```
-
-### 3) Add files
-
-```powershell
-git add .
-```
-
-### 4) Commit
-
-```powershell
-git commit -m "Initial NyayaAI project"
-```
-
-### 5) Connect remote
-
-```powershell
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-```
-
-If the remote already exists:
-
-```powershell
-git remote set-url origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-```
-
-### 6) Push
-
-```powershell
-git push -u origin main
-```
-
-## Notes
-
-- If you update the backend configuration or database settings, restart the backend.
-- If you use Docker locally, make sure ports `80`, `8000`, and `6333` are free.
-- For demos, keep a few PDF files in `data/` so ingestion has content to index.
+[MIT](LICENSE)

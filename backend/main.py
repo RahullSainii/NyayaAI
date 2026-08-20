@@ -2,11 +2,16 @@ import asyncio
 import json
 import logging
 import re
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from backend.config import (
     ADMIN_API_KEY,
@@ -71,6 +76,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        start = time.perf_counter()
+        response: Response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start) * 1000, 1)
+        response.headers["X-Request-ID"] = request_id
+        logger.info(
+            "%s %s → %s (%.1fms) [%s]",
+            request.method, request.url.path, response.status_code, duration_ms, request_id,
+        )
+        return response
+
+
+app.add_middleware(RequestIDMiddleware)
+
 allowed_origins: list[str] = []
 if FRONTEND_ORIGIN:
     allowed_origins.append(FRONTEND_ORIGIN)
@@ -106,9 +128,28 @@ async def root():
     return {"name": "NyayaAI", "status": "ok", "docs": "/docs"}
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 async def health():
-    return HealthResponse(status="ok")
+    checks = {"api": "ok"}
+    # Check Qdrant
+    try:
+        from qdrant_client import QdrantClient
+        from backend.config import QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY or None, timeout=3)
+        info = client.get_collection(COLLECTION_NAME)
+        checks["qdrant"] = "ok"
+        checks["qdrant_points"] = info.points_count
+    except Exception as e:
+        checks["qdrant"] = f"error: {type(e).__name__}"
+    # Check DB
+    try:
+        from backend.db import get_user_by_email
+        get_user_by_email("__health_check__")
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {type(e).__name__}"
+    overall = "ok" if all(v == "ok" for k, v in checks.items() if k != "qdrant_points") else "degraded"
+    return {"status": overall, "checks": checks}
 
 
 @app.get("/map", response_model=MapResponse)

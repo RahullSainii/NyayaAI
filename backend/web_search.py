@@ -31,6 +31,27 @@ from backend.config import (
 
 logger = logging.getLogger(__name__)
 
+import time as _time
+
+# Simple in-memory TTL cache for web search results.
+_cache: dict[str, tuple[float, list]] = {}
+_CACHE_TTL = 300  # 5 minutes
+_CACHE_MAX = 128
+
+def _cache_get(key: str) -> list | None:
+    entry = _cache.get(key)
+    if entry and (_time.time() - entry[0]) < _CACHE_TTL:
+        return entry[1]
+    _cache.pop(key, None)
+    return None
+
+def _cache_set(key: str, value: list) -> None:
+    # Evict oldest entries if cache is full.
+    if len(_cache) >= _CACHE_MAX:
+        oldest = min(_cache, key=lambda k: _cache[k][0])
+        _cache.pop(oldest, None)
+    _cache[key] = (_time.time(), value)
+
 _TIMEOUT = 15.0
 
 # Low-quality sources for legal questions: forums, Q&A sites, study/flashcard
@@ -170,6 +191,12 @@ async def web_search(query: str, max_results: int | None = None) -> List[Dict]:
         return []
 
     limit = max_results or WEB_SEARCH_MAX_RESULTS
+    cache_key = f"{query.strip().lower()}:{limit}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        logger.info("Web search cache hit for: %s", query[:80])
+        return cached
+
     providers = []
     if TAVILY_API_KEY:
         providers.append(("tavily", _tavily))
@@ -187,6 +214,7 @@ async def web_search(query: str, max_results: int | None = None) -> List[Dict]:
                     "Web search via %s: %d raw -> %d ranked result(s).",
                     name, len(results), len(ranked),
                 )
+                _cache_set(cache_key, ranked)
                 return ranked
             logger.info("Web search via %s returned no usable results.", name)
         except Exception as exc:

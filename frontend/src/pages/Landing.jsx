@@ -456,13 +456,13 @@ export default function Landing() {
       </section>
 
       {/* 6. CTA SECTION */}
-      <section className="py-24 relative overflow-hidden">
+      <section className="py-32 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface/50 z-0 pointer-events-none" />
         
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <SpotlightCard className="p-10 md:p-16 text-center border-gold/30 shadow-[0_0_50px_rgba(212,166,78,0.1)]">
             <h2 className="display-lg text-4xl md:text-5xl font-display font-bold text-fg mb-6">Ready to understand Indian law?</h2>
-            <p className="body-lg text-lg text-fg-muted max-w-2xl mx-auto mb-10">
+            <p className="body-lg text-lg text-fg-muted max-w-2xl mx-auto mb-12">
               Join professionals, students, and citizens who are using NyayaAI to decode legal complexities effortlessly.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
@@ -477,21 +477,21 @@ export default function Landing() {
       {/* 7. FOOTER */}
       <footer className="bg-ink border-t border-line relative overflow-hidden">
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-gold to-transparent opacity-30" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
             <div className="md:col-span-1">
               <Link to="/" className="flex items-center gap-2 mb-4">
                 <img src={logo} alt="NyayaAI Logo" className="h-8 w-auto" />
                 <span className="text-xl font-display font-bold text-fg">NyayaAI</span>
               </Link>
-              <p className="text-sm text-fg-muted mb-6">
+              <p className="text-sm text-fg-muted leading-relaxed mb-8">
                 Bridging the gap between complex Indian jurisprudence and clear understanding.
               </p>
             </div>
             
             <div>
-              <h4 className="text-fg font-semibold mb-4">Product</h4>
-              <ul className="space-y-3 text-sm text-fg-muted">
+              <h4 className="text-fg font-semibold mb-6">Product</h4>
+              <ul className="space-y-4 text-sm text-fg-muted">
                 <li><Link to="/chat" className="hover:text-gold transition-colors">AI Assistant</Link></li>
                 <li><Link to="/map" className="hover:text-gold transition-colors">IPC-BNS Map</Link></li>
                 <li><Link to="/pricing" className="hover:text-gold transition-colors">Pricing</Link></li>
@@ -499,8 +499,8 @@ export default function Landing() {
             </div>
             
             <div>
-              <h4 className="text-fg font-semibold mb-4">Resources</h4>
-              <ul className="space-y-3 text-sm text-fg-muted">
+              <h4 className="text-fg font-semibold mb-6">Resources</h4>
+              <ul className="space-y-4 text-sm text-fg-muted">
                 <li><a href="#" className="hover:text-gold transition-colors">Documentation</a></li>
                 <li><a href="#" className="hover:text-gold transition-colors">Legal Blog</a></li>
                 <li><a href="#" className="hover:text-gold transition-colors">API Access</a></li>
@@ -508,8 +508,8 @@ export default function Landing() {
             </div>
             
             <div>
-              <h4 className="text-fg font-semibold mb-4">Legal</h4>
-              <ul className="space-y-3 text-sm text-fg-muted">
+              <h4 className="text-fg font-semibold mb-6">Legal</h4>
+              <ul className="space-y-4 text-sm text-fg-muted">
                 <li><a href="#" className="hover:text-gold transition-colors">Privacy Policy</a></li>
                 <li><a href="#" className="hover:text-gold transition-colors">Terms of Service</a></li>
                 <li><a href="#" className="hover:text-gold transition-colors">Disclaimer</a></li>
@@ -517,7 +517,7 @@ export default function Landing() {
             </div>
           </div>
           
-          <div className="border-t border-line pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-fg-faint">
+          <div className="border-t border-line pt-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-fg-faint">
             <p>&copy; {new Date().getFullYear()} NyayaAI. All rights reserved.</p>
             <div className="flex items-center gap-2">
               <Globe size={14} /> Made in India
