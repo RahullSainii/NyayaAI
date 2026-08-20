@@ -27,11 +27,13 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Bind to the port Render provides via $PORT (falls back to 8000 locally).
-# Shell form is required so ${PORT} is expanded at runtime.
-CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# sh -c is required so ${PORT} is expanded at runtime, then exec hands signals to Uvicorn.
+CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

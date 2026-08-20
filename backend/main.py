@@ -59,14 +59,27 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("NyayaAI starting up...")
-    # Warm the local corpus so the first chat request does not run empty-handed.
-    try:
-        await ensure_ready()
-    except Exception as exc:
-        logger.warning("Startup warm-up skipped: %s", exc)
+    warmup_task = asyncio.create_task(_warm_retrieval())
     logger.info("NyayaAI ready.")
     yield
+    if not warmup_task.done():
+        warmup_task.cancel()
     logger.info("NyayaAI shutting down.")
+
+
+async def _warm_retrieval() -> None:
+    """Warm the corpus after the HTTP port is open.
+
+    Render marks Docker web services healthy by scanning for an open port. Any
+    slow model/corpus work in FastAPI lifespan can make the deploy time out
+    before Uvicorn starts accepting connections.
+    """
+    try:
+        await ensure_ready()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning("Startup warm-up skipped: %s", exc)
 
 
 app = FastAPI(
