@@ -438,16 +438,19 @@ export default function Landing() {
       </section>
 
       {/* 5. TRUST / MARQUEE SECTION */}
-      <section className="py-12 border-b border-line bg-ink overflow-hidden flex items-center">
-        <div className="flex w-[200%] md:w-max animate-marquee whitespace-nowrap">
+      <section className="py-8 border-b border-line bg-surface-2 overflow-hidden flex items-center relative">
+        <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-ink to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-ink to-transparent z-10 pointer-events-none" />
+        
+        <div className="flex w-max animate-marquee whitespace-nowrap">
           {[...Array(2)].map((_, i) => (
-            <div key={i} className="flex items-center gap-12 px-6">
+            <div key={i} className="flex items-center gap-16 px-8">
               {[
                 "Based on IPC & BNS", "AI-Powered Analysis", "Plain Language Output", 
                 "Educational Focus", "Source-Linked Data", "Verified Mappings"
               ].map((text, j) => (
-                <div key={j} className="flex items-center gap-3 text-fg-muted font-medium text-lg">
-                  <Star size={16} className="text-gold/50" /> {text}
+                <div key={j} className="flex items-center gap-3 text-fg-muted font-medium text-sm tracking-wide uppercase">
+                  <Sparkles size={14} className="text-gold/50" /> {text}
                 </div>
               ))}
             </div>
@@ -456,18 +459,29 @@ export default function Landing() {
       </section>
 
       {/* 6. CTA SECTION */}
-      <section className="py-32 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface/50 z-0 pointer-events-none" />
+      <section className="py-32 relative overflow-hidden flex items-center justify-center min-h-[60vh]">
+        {/* Background Effects */}
+        <div className="absolute inset-0 bg-ink z-0" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-gold/10 blur-[120px] rounded-[100%] pointer-events-none z-0" />
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none z-0" />
         
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <SpotlightCard className="p-10 md:p-16 text-center border-gold/30 shadow-[0_0_50px_rgba(212,166,78,0.1)]">
-            <h2 className="display-lg text-4xl md:text-5xl font-display font-bold text-fg mb-6">Ready to understand Indian law?</h2>
-            <p className="body-lg text-lg text-fg-muted max-w-2xl mx-auto mb-12">
-              Join professionals, students, and citizens who are using NyayaAI to decode legal complexities effortlessly.
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
+          <SpotlightCard className="p-12 md:p-20 text-center border-gold/20 shadow-[0_0_80px_rgba(212,166,78,0.15)] bg-surface-glass-strong">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gold/10 border border-gold/20 text-gold text-sm font-medium mb-8">
+              <Zap size={16} className="fill-gold" /> Available Now
+            </div>
+            <h2 className="display-lg text-5xl md:text-6xl lg:text-7xl font-display font-bold text-fg mb-8 leading-[1.1] tracking-tight">
+              Ready to decode <br className="hidden md:block" /> Indian law?
+            </h2>
+            <p className="body-lg text-xl text-fg-muted max-w-2xl mx-auto mb-12 leading-relaxed">
+              Join professionals, students, and citizens using NyayaAI to turn complex legal jargon into clear, actionable insights in seconds.
             </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link to="/chat" className="primary-cta group relative overflow-hidden bg-gold text-ink px-8 py-4 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-gold-bright transition-all">
-                Start Exploring Now <ArrowUpRight size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-6">
+              <Link to="/chat" className="primary-cta group relative overflow-hidden bg-gold text-ink px-10 py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-3 hover:bg-gold-bright transition-all shadow-lg hover:shadow-gold/25 hover:-translate-y-1 w-full sm:w-auto">
+                Start Exploring Now <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <Link to="/map" className="px-10 py-5 rounded-xl font-bold text-lg text-fg border border-line bg-surface hover:bg-surface-2 transition-all w-full sm:w-auto text-center">
+                View IPC-BNS Map
               </Link>
             </div>
           </SpotlightCard>
