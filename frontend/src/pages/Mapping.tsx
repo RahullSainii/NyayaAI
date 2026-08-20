@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Scale, ArrowRight, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import SectionCard from '../components/SectionCard';
 import MappingDrawer from '../components/MappingDrawer';
 import { apiUrl } from '../lib/api';
+import type { LegalSection, ApiMappingResult } from '../types';
 
-const SAMPLE_SECTIONS = [
+const SAMPLE_SECTIONS: LegalSection[] = [
   {
     id: 1,
     ipcSection: '302',
@@ -68,19 +69,19 @@ const SAMPLE_SECTIONS = [
     description:
       'Deals with domestic cruelty and related protections for married women.',
   },
-]
+];
 
-const SECTION_DETAILS = Object.fromEntries(
+const SECTION_DETAILS: Record<string, LegalSection> = Object.fromEntries(
   SAMPLE_SECTIONS.map((section) => [section.ipcSection, section]),
-)
+);
 
-const normalizeSectionInput = (value) =>
-  value.trim().toUpperCase().replace(/^SECTION\s+/i, '').replace(/^SEC\s+/i, '')
+const normalizeSectionInput = (value: string): string =>
+  value.trim().toUpperCase().replace(/^SECTION\s+/i, '').replace(/^SEC\s+/i, '');
 
-const buildSectionFromApi = (result) => {
-  const fallback = SECTION_DETAILS[result.ipc] || {}
-  const bnsSection = result.bns || 'Not Found'
-  const mappingFound = bnsSection !== 'Not Found'
+const buildSectionFromApi = (result: ApiMappingResult): LegalSection => {
+  const fallback = SECTION_DETAILS[result.ipc] || {};
+  const bnsSection = result.bns || 'Not Found';
+  const mappingFound = bnsSection !== 'Not Found';
 
   return {
     id: Date.now(),
@@ -99,60 +100,60 @@ const buildSectionFromApi = (result) => {
       fallback.description ||
       result.description ||
       'No additional mapping description is available.',
-  }
-}
+  };
+};
 
 function Mapping() {
-  const [search, setSearch] = useState('')
-  const [selectedSection, setSelectedSection] = useState(null)
-  const [resultSection, setResultSection] = useState(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [isFocused, setIsFocused] = useState(false)
+  const [search, setSearch] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<LegalSection | null>(null);
+  const [resultSection, setResultSection] = useState<LegalSection | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
+  const [isFocused, setIsFocused] = useState<boolean>(false);
 
-  const runLookup = async (rawValue) => {
-    const ipcSection = normalizeSectionInput(rawValue)
+  const runLookup = async (rawValue: string) => {
+    const ipcSection = normalizeSectionInput(rawValue);
 
     if (!ipcSection) {
-      setResultSection(null)
-      setError('')
-      return
+      setResultSection(null);
+      setError('');
+      return;
     }
 
-    setIsLoading(true)
-    setError('')
+    setIsLoading(true);
+    setError('');
 
     try {
       const response = await fetch(
         apiUrl(`/map?ipc=${encodeURIComponent(ipcSection)}`),
-      )
+      );
 
       if (!response.ok) {
-        throw new Error(`Mapping request failed with status ${response.status}`)
+        throw new Error(`Mapping request failed with status ${response.status}`);
       }
 
-      const result = await response.json()
-      const mappedSection = buildSectionFromApi(result)
-      setResultSection(mappedSection)
-    } catch (lookupError) {
-      setResultSection(null)
+      const result: ApiMappingResult = await response.json();
+      const mappedSection = buildSectionFromApi(result);
+      setResultSection(mappedSection);
+    } catch {
+      setResultSection(null);
       setError(
         'Unable to fetch mapping right now. Please try again in a moment.',
-      )
+      );
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    await runLookup(search)
-  }
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await runLookup(search);
+  };
 
-  const handleQuickPick = async (section) => {
-    setSearch(section.ipcSection)
-    await runLookup(section.ipcSection)
-  }
+  const handleQuickPick = async (section: LegalSection) => {
+    setSearch(section.ipcSection);
+    await runLookup(section.ipcSection);
+  };
 
   return (
     <div className="min-h-screen bg-ink text-fg font-body">
@@ -340,7 +341,7 @@ function Mapping() {
         )}
       </AnimatePresence>
     </div>
-  )
+  );
 }
 
 export default Mapping;

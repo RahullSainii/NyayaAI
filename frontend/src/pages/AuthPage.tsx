@@ -1,19 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, ArrowRight, Eye, EyeOff, CheckCircle, AlertCircle, Loader2, KeyRound, Sparkles, Shield } from 'lucide-react';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
+import { Mail, Lock, User, ArrowRight, Eye, EyeOff, CheckCircle, AlertCircle, Loader2, KeyRound, Sparkles } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/nyaya.jpeg';
 import AetherHero from '../components/ui/aether-hero';
 
-const formVariants = {
+const formVariants: Variants = {
   initial: { opacity: 0, x: 30, scale: 0.97 },
   animate: { opacity: 1, x: 0, scale: 1, transition: { duration: 0.4, ease: 'easeOut' } },
   exit: { opacity: 0, x: -30, scale: 0.97, transition: { duration: 0.25, ease: 'easeIn' } },
 };
 
-function PasswordStrength({ password }) {
+function PasswordStrength({ password }: { password: string }) {
   const strength = useMemo(() => {
     if (!password) return { level: 0, label: '', color: '' };
     if (password.length < 6) return { level: 1, label: 'Weak', color: 'bg-red-500' };
@@ -37,7 +37,11 @@ function PasswordStrength({ password }) {
   );
 }
 
-export default function AuthPage({ mode = 'login' }) {
+export interface AuthPageProps {
+  mode?: 'login' | 'register' | 'forgot-password' | 'reset-password';
+}
+
+export default function AuthPage({ mode = 'login' }: AuthPageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, register, forgotPassword, resetPassword, isAuthenticated, loginWithGoogle } = useAuth();
@@ -57,8 +61,9 @@ export default function AuthPage({ mode = 'login' }) {
         // authenticated endpoints (like /chat) accept the session.
         await loginWithGoogle(tokenResponse.access_token);
         navigate('/chat', { replace: true });
-      } catch (err) {
-        setError(err.message || 'Google sign-in failed');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Google sign-in failed';
+        setError(msg);
       } finally {
         setIsLoading(false);
       }
@@ -80,12 +85,12 @@ export default function AuthPage({ mode = 'login' }) {
     setFormData({ name: '', email: '', password: '', confirmPassword: '' });
   }, [mode]);
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     if (error) setError('');
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -118,8 +123,9 @@ export default function AuthPage({ mode = 'login' }) {
         setSuccess(result.message);
         setTimeout(() => navigate('/login'), 2500);
       }
-    } catch (err) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'An error occurred';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }

@@ -1,30 +1,39 @@
-import { Component } from 'react'
+import { Component, ErrorInfo, ReactNode } from 'react';
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
 
 /**
  * React Error Boundary — catches render-phase crashes in any child tree
  * and shows a recovery UI instead of a blank white screen.
  *
- * Wrap around <Routes> in App.jsx so a single page crash doesn't kill
+ * Wrap around <Routes> in App.tsx so a single page crash doesn't kill
  * the entire app.
  */
-export default class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false, error: null }
+export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error }
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
   }
 
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // In production you'd send this to Sentry / LogRocket / etc.
-    console.error('ErrorBoundary caught:', error, errorInfo)
+    console.error('ErrorBoundary caught:', error, errorInfo);
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null })
-  }
+    this.setState({ hasError: false, error: null });
+  };
 
   render() {
     if (this.state.hasError) {
@@ -81,9 +90,9 @@ export default class ErrorBoundary extends Component {
             </button>
           </div>
         </div>
-      )
+      );
     }
 
-    return this.props.children
+    return this.props.children;
   }
 }

@@ -45,6 +45,26 @@ in vec2 position;
 void main(){ gl_Position = vec4(position, 0.0, 1.0); }
 `;
 
+export interface AetherHeroProps {
+  title?: React.ReactNode;
+  subtitle?: React.ReactNode;
+  ctaLabel?: string;
+  ctaHref?: string;
+  secondaryCtaLabel?: string;
+  secondaryCtaHref?: string;
+  children?: React.ReactNode;
+  align?: 'left' | 'center' | 'right' | string;
+  maxWidth?: number;
+  overlayGradient?: string;
+  textColor?: string;
+  fragmentSource?: string;
+  dprMax?: number;
+  clearColor?: [number, number, number, number] | number[];
+  height?: string;
+  className?: string;
+  ariaLabel?: string;
+}
+
 export default function AetherHero({
   /* Content */
   title,
@@ -53,7 +73,7 @@ export default function AetherHero({
   ctaHref,
   secondaryCtaLabel,
   secondaryCtaHref,
-  children, // Added children to allow custom content injection
+  children,
 
   align = 'center',
   maxWidth = 1200,
@@ -69,18 +89,19 @@ export default function AetherHero({
   height = '100vh',
   className = '',
   ariaLabel = 'Aurora hero background',
-}) {
-  const canvasRef = useRef(null);
-  const glRef = useRef(null);
-  const programRef = useRef(null);
-  const bufRef = useRef(null);
-  const uniTimeRef = useRef(null);
-  const uniResRef = useRef(null);
-  const rafRef = useRef(null);
+}: AetherHeroProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const glRef = useRef<WebGL2RenderingContext | null>(null);
+  const programRef = useRef<WebGLProgram | null>(null);
+  const bufRef = useRef<WebGLBuffer | null>(null);
+  const uniTimeRef = useRef<WebGLUniformLocation | null>(null);
+  const uniResRef = useRef<WebGLUniformLocation | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   // Compile helpers
-  const compileShader = (gl, src, type) => {
+  const compileShader = (gl: WebGL2RenderingContext, src: string, type: number): WebGLShader => {
     const sh = gl.createShader(type);
+    if (!sh) throw new Error('Failed to create shader');
     gl.shaderSource(sh, src);
     gl.compileShader(sh);
     if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
@@ -91,10 +112,11 @@ export default function AetherHero({
     return sh;
   };
   
-  const createProgram = (gl, vs, fs) => {
+  const createProgram = (gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram => {
     const v = compileShader(gl, vs, gl.VERTEX_SHADER);
     const f = compileShader(gl, fs, gl.FRAGMENT_SHADER);
     const prog = gl.createProgram();
+    if (!prog) throw new Error('Failed to create program');
     gl.attachShader(prog, v);
     gl.attachShader(prog, f);
     gl.linkProgram(prog);
@@ -137,7 +159,7 @@ export default function AetherHero({
     const clear = clearRef.current;
 
     // Program
-    let prog;
+    let prog: WebGLProgram;
     try {
       prog = createProgram(gl, VERT_SRC, fragmentSrc);
     } catch (e) {
@@ -163,7 +185,7 @@ export default function AetherHero({
     uniResRef.current = gl.getUniformLocation(prog, 'resolution');
 
     // Clear color
-    gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
+    gl.clearColor(clear[0] ?? 0, clear[1] ?? 0, clear[2] ?? 0, clear[3] ?? 1);
 
     // Size & DPR. Measure the parent section (the canvas fills it via inset:0)
     // so we always get the real rendered size, never a collapsed 0.
@@ -191,7 +213,7 @@ export default function AetherHero({
     window.addEventListener('resize', onResize);
 
     // RAF
-    const loop = (now) => {
+    const loop = (now: number) => {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.useProgram(prog);
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -216,7 +238,7 @@ export default function AetherHero({
   }, []);
 
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
-  const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+  const textAlign = (align === 'left' ? 'left' : align === 'right' ? 'right' : 'center') as React.CSSProperties['textAlign'];
 
   return (
     <section

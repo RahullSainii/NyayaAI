@@ -1,4 +1,23 @@
-import { X, MicOff } from 'lucide-react'
+import { RefObject, ChangeEvent, KeyboardEvent } from 'react';
+import { X, MicOff } from 'lucide-react';
+import { Attachment } from '../types';
+
+export interface ChatInputAreaProps {
+  input: string;
+  setInput: (value: string) => void;
+  handleKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  handleSend: () => void;
+  isLoading: boolean;
+  attachments: Attachment[];
+  handleAttachClick: () => void;
+  handleFilesSelected: (event: ChangeEvent<HTMLInputElement>) => void;
+  removeAttachment: (id: string | number) => void;
+  isRecording: boolean;
+  recordingNotSupported: boolean;
+  toggleRecording: () => void;
+  textareaRef: RefObject<HTMLTextAreaElement>;
+  fileInputRef: RefObject<HTMLInputElement>;
+}
 
 export default function ChatInputArea({
   input,
@@ -15,7 +34,7 @@ export default function ChatInputArea({
   toggleRecording,
   textareaRef,
   fileInputRef,
-}) {
+}: ChatInputAreaProps) {
   return (
     <div className="w-full p-4 md:p-6 bg-[#020617]/95 backdrop-blur-sm border-t border-glass-border flex justify-center shrink-0 z-20">
       <div className="w-full max-w-[800px]">
@@ -123,5 +142,5 @@ export default function ChatInputArea({
         </div>
       </div>
     </div>
-  )
+  );
 }

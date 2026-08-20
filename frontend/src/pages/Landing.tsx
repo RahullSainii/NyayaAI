@@ -1,38 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useInView, useScroll, useTransform } from 'framer-motion';
+import { motion, useInView, type Variants } from 'framer-motion';
 import { 
   ArrowRight, Bot, BookOpenText, BrainCircuit, FileSearch, Landmark, 
-  Scale, Search, ShieldCheck, Sparkles, Workflow, ChevronRight, Star, 
-  Users, Zap, ArrowUpRight, MessageSquare, Globe, Clock, CheckCircle2 
+  Scale, ShieldCheck, Sparkles, Workflow, 
+  Users, Zap, MessageSquare, Globe, CheckCircle2 
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import logo from '../assets/nyaya.jpeg';
 import AetherHero from '../components/ui/aether-hero';
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: (delay = 0) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1], delay }
+    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] as const, delay: typeof delay === 'number' ? delay : 0 }
   })
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.1 } }
 };
 
-function CountUpStat({ end, label, suffix = '', duration = 2.5 }) {
+interface CountUpStatProps {
+  end: number;
+  label: string;
+  suffix?: string;
+  duration?: number;
+}
+
+function CountUpStat({ end, label, suffix = '', duration = 2.5 }: CountUpStatProps) {
   const [count, setCount] = useState(0);
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: true, margin: "-50px" });
 
   useEffect(() => {
     if (isInView) {
-      let startTimestamp = null;
-      const step = (timestamp) => {
+      let startTimestamp: number | null = null;
+      const step = (timestamp: number) => {
         if (!startTimestamp) startTimestamp = timestamp;
         const progress = Math.min((timestamp - startTimestamp) / (duration * 1000), 1);
         const easeProgress = 1 - Math.pow(1 - progress, 4);
@@ -56,12 +63,17 @@ function CountUpStat({ end, label, suffix = '', duration = 2.5 }) {
   );
 }
 
-function SpotlightCard({ children, className }) {
+interface SpotlightCardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+function SpotlightCard({ children, className = '' }: SpotlightCardProps) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [hovering, setHovering] = useState(false);
-  const cardRef = useRef(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   
-  const handleMouseMove = (e) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!cardRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
     setPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -89,7 +101,11 @@ function SpotlightCard({ children, className }) {
   );
 }
 
-const FloatingMockup = ({ mousePos }) => {
+interface FloatingMockupProps {
+  mousePos: { x: number; y: number };
+}
+
+const FloatingMockup = ({ mousePos }: FloatingMockupProps) => {
   return (
     <div 
       className="relative w-full max-w-lg mx-auto md:max-w-xl lg:max-w-2xl aspect-[4/3] perspective-1000"
@@ -171,9 +187,9 @@ const FloatingMockup = ({ mousePos }) => {
 
 export default function Landing() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const heroRef = useRef(null);
+  const heroRef = useRef<HTMLDivElement>(null);
 
-  const handleHeroMouseMove = (e) => {
+  const handleHeroMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!heroRef.current) return;
     const rect = heroRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width * 2 - 1;
@@ -240,7 +256,7 @@ export default function Landing() {
                     Start with NyayaAI <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                   </span>
                 </Link>
-                <Link to="/map" className="secondary-cta px-6 py-3 rounded-lg font-semibold text-fg bg-surface border border-line flex items-center gap-2 hover:bg-surface-2 transition-colors">
+                <Link to="/mapping" className="secondary-cta px-6 py-3 rounded-lg font-semibold text-fg bg-surface border border-line flex items-center gap-2 hover:bg-surface-2 transition-colors">
                   Browse sections
                 </Link>
               </motion.div>
@@ -411,7 +427,7 @@ export default function Landing() {
               {[
                 { step: "01", title: "Ask", desc: "Type your query in plain language, describing the legal scenario or specific section.", icon: MessageSquare },
                 { step: "02", title: "Analyze", desc: "Our engine maps your query against the BNS, IPC, and relevant procedures.", icon: BrainCircuit },
-                { step: "03", title: "Translate", desc: "Complex legal jargon is broken down into clear, understandable insights.", icon: ({ size, className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg> },
+                { step: "03", title: "Translate", desc: "Complex legal jargon is broken down into clear, understandable insights.", icon: ({ size, className }: { size?: number | string; className?: string }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg> },
                 { step: "04", title: "Apply", desc: "Use the cited sources and structured answers to inform your next steps.", icon: Landmark }
               ].map((item, idx) => (
                 <motion.div 
@@ -480,7 +496,7 @@ export default function Landing() {
               <Link to="/chat" className="primary-cta group relative overflow-hidden bg-gold text-ink px-10 py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-3 hover:bg-gold-bright transition-all shadow-lg hover:shadow-gold/25 hover:-translate-y-1 w-full sm:w-auto">
                 Start Exploring Now <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
               </Link>
-              <Link to="/map" className="px-10 py-5 rounded-xl font-bold text-lg text-fg border border-line bg-surface hover:bg-surface-2 transition-all w-full sm:w-auto text-center">
+              <Link to="/mapping" className="px-10 py-5 rounded-xl font-bold text-lg text-fg border border-line bg-surface hover:bg-surface-2 transition-all w-full sm:w-auto text-center">
                 View IPC-BNS Map
               </Link>
             </div>
@@ -507,7 +523,7 @@ export default function Landing() {
               <h4 className="text-fg font-semibold mb-6">Product</h4>
               <ul className="space-y-4 text-sm text-fg-muted">
                 <li><Link to="/chat" className="hover:text-gold transition-colors">AI Assistant</Link></li>
-                <li><Link to="/map" className="hover:text-gold transition-colors">IPC-BNS Map</Link></li>
+                <li><Link to="/mapping" className="hover:text-gold transition-colors">IPC-BNS Map</Link></li>
                 <li><Link to="/pricing" className="hover:text-gold transition-colors">Pricing</Link></li>
               </ul>
             </div>

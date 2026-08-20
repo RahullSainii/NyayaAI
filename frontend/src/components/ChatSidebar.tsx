@@ -1,6 +1,19 @@
-import { motion } from 'framer-motion'
-import { X } from 'lucide-react'
-import logo from '../assets/nyaya.jpeg'
+import { Dispatch, SetStateAction, ReactNode } from 'react';
+import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
+import logo from '../assets/nyaya.jpeg';
+import { ChatSession } from '../types';
+
+export interface ChatSidebarProps {
+  sidebarOpen: boolean;
+  setSidebarOpen: Dispatch<SetStateAction<boolean>> | ((open: boolean) => void);
+  handleNewChat: () => void;
+  recentSessions: ChatSession[];
+  archivedSessions: ChatSession[];
+  renderSessionRow: (session: ChatSession, isArchived: boolean) => ReactNode;
+  showArchived: boolean;
+  setShowArchived: Dispatch<SetStateAction<boolean>> | ((fn: (v: boolean) => boolean) => void);
+}
 
 export default function ChatSidebar({
   sidebarOpen,
@@ -11,7 +24,7 @@ export default function ChatSidebar({
   renderSessionRow,
   showArchived,
   setShowArchived
-}) {
+}: ChatSidebarProps) {
   return (
     <motion.nav
       initial={{ x: '-100%' }}
@@ -63,7 +76,7 @@ export default function ChatSidebar({
           {archivedSessions.length > 0 && (
             <div className="mt-2 border-t border-glass-border pt-2">
               <button
-                onClick={() => setShowArchived((v) => !v)}
+                onClick={() => setShowArchived((v: boolean) => !v)}
                 className="w-full flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/50 hover:text-on-surface-variant transition-colors"
               >
                 <span className="material-symbols-outlined text-[16px]">{showArchived ? 'expand_more' : 'chevron_right'}</span>
@@ -92,5 +105,5 @@ export default function ChatSidebar({
         </div>
       </div>
     </motion.nav>
-  )
+  );
 }

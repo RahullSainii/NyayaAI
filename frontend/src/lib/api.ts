@@ -6,12 +6,12 @@
  * in a single place.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || ''
 
 /**
  * Build a full API URL from a relative path (e.g. `/auth/login`).
  */
-export function apiUrl(path) {
+export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`
 }
 
@@ -23,9 +23,11 @@ export function apiUrl(path) {
  *
  * Returns the raw Response so callers can handle status codes themselves.
  */
-export async function apiFetch(path, options = {}) {
+export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = localStorage.getItem('nyayaai_token')
-  const headers = { ...options.headers }
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`

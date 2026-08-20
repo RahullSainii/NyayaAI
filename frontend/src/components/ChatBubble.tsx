@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Sparkles, FileText, Copy, Check, ThumbsUp, ThumbsDown,
+  FileText, Copy, Check, ThumbsUp, ThumbsDown,
   Share2, RefreshCw, Volume2, VolumeX, GitBranch,
   MessageSquare, Globe, ExternalLink,
 } from 'lucide-react';
 import logo from '../assets/nyaya.jpeg';
+import { ChatMessage, ChatSource } from '../types';
 
-const isWebSource = (source) =>
-  typeof source === 'object' && source.law_type === 'WEB';
+const isWebSource = (source: string | ChatSource): boolean =>
+  typeof source === 'object' && source !== null && source.law_type === 'WEB';
 
-const hostFromUrl = (url = '') => {
+const hostFromUrl = (url = ''): string => {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
   } catch {
@@ -18,8 +19,9 @@ const hostFromUrl = (url = '') => {
   }
 };
 
-const formatSourceLabel = (source) => {
+const formatSourceLabel = (source: string | ChatSource): string => {
   if (typeof source === 'string') return source;
+  if (!source) return 'Unknown source';
 
   if (isWebSource(source)) {
     // For web results, prefer the page title, falling back to the domain.
@@ -33,13 +35,14 @@ const formatSourceLabel = (source) => {
   return `${lawType} Section ${section}${page}`;
 };
 
-const SOURCE_BADGES = {
+const SOURCE_BADGES: Record<string, { icon: string; label: string; cls: string }> = {
   web: { icon: 'public', label: 'Web', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/30' },
   document: { icon: 'description', label: 'Document', cls: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' },
   image: { icon: 'image', label: 'Image', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
 };
 
-function SourceBadge({ sourceType }) {
+function SourceBadge({ sourceType }: { sourceType?: string }) {
+  if (!sourceType) return null;
   const badge = SOURCE_BADGES[sourceType];
   if (!badge) return null;
   return (
@@ -53,7 +56,7 @@ function SourceBadge({ sourceType }) {
   );
 }
 
-function formatInline(text) {
+function formatInline(text: string): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -66,23 +69,23 @@ function formatInline(text) {
   });
 }
 
-const splitTableRow = (line) => {
+const splitTableRow = (line: string): string[] => {
   let l = line.trim();
   if (l.startsWith('|')) l = l.slice(1);
   if (l.endsWith('|')) l = l.slice(0, -1);
   return l.split('|').map((c) => c.trim());
 };
 
-const isTableRow = (line) => /\|/.test(line);
-const isTableSeparator = (line) =>
+const isTableRow = (line: string): boolean => /\|/.test(line);
+const isTableSeparator = (line: string): boolean =>
   /^\s*\|?[\s:|-]*-{2,}[\s:|-]*\|?\s*$/.test(line) && line.includes('-');
 
-function renderMarkdown(text) {
+function renderMarkdown(text?: string): ReactNode {
   if (!text) return null;
   const lines = text.split('\n');
-  const elements = [];
-  let listItems = [];
-  let listType = null;
+  const elements: ReactNode[] = [];
+  let listItems: ReactNode[] = [];
+  let listType: 'ol' | 'ul' | null = null;
 
   const flushList = () => {
     if (listItems.length > 0) {
@@ -93,7 +96,7 @@ function renderMarkdown(text) {
     }
   };
 
-  const headingClass = {
+  const headingClass: Record<number, string> = {
     1: 'text-lg font-bold text-on-surface mt-4 mb-2',
     2: 'text-base font-bold text-on-surface mt-3 mb-2',
     3: 'text-[13px] font-semibold text-secondary uppercase tracking-wide mt-3 mb-1.5',
@@ -107,7 +110,7 @@ function renderMarkdown(text) {
     if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
       flushList();
       const headers = splitTableRow(line);
-      const rows = [];
+      const rows: string[][] = [];
       let j = i + 2;
       while (j < lines.length && isTableRow(lines[j]) && !isTableSeparator(lines[j])) {
         rows.push(splitTableRow(lines[j]));
@@ -148,7 +151,7 @@ function renderMarkdown(text) {
     if (headingMatch) {
       flushList();
       const level = Math.min(headingMatch[1].length, 4);
-      const Tag = `h${Math.min(headingMatch[1].length, 6)}`;
+      const Tag = `h${Math.min(headingMatch[1].length, 6)}` as keyof JSX.IntrinsicElements;
       elements.push(
         <Tag key={`h-${i}`} className={headingClass[level] || headingClass[4]}>
           {formatInline(headingMatch[2])}
@@ -176,7 +179,7 @@ function renderMarkdown(text) {
 }
 
 /* Strip markdown so copy / share / read-aloud get clean, natural text */
-const toPlainText = (text = '') =>
+const toPlainText = (text = ''): string =>
   text
     .replace(/^#{1,6}\s+/gm, '')            // headings
     .replace(/^\s*[-*]\s+/gm, '')            // bullet markers
@@ -189,11 +192,11 @@ const toPlainText = (text = '') =>
     .replace(/[ \t]+/g, ' ')
     .trim();
 
-function TextSelectionToolbar({ onAskAbout }) {
-  const [selection, setSelection] = useState(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [copiedSel, setCopiedSel] = useState(false);
-  const toolbarRef = useRef(null);
+function TextSelectionToolbar({ onAskAbout }: { onAskAbout?: (text: string) => void }) {
+  const [selection, setSelection] = useState<string | null>(null);
+  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [copiedSel, setCopiedSel] = useState<boolean>(false);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -224,8 +227,8 @@ function TextSelectionToolbar({ onAskAbout }) {
       setSelection(text);
     };
 
-    const handleMouseDown = (e) => {
-      if (toolbarRef.current && toolbarRef.current.contains(e.target)) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (toolbarRef.current && toolbarRef.current.contains(e.target as Node)) return;
     };
 
     document.addEventListener('mouseup', handleMouseUp);
@@ -310,7 +313,15 @@ function TextSelectionToolbar({ onAskAbout }) {
   );
 }
 
-function ActionButton({ label, onClick, active, activeClass = 'text-secondary', children }) {
+interface ActionButtonProps {
+  label: string;
+  onClick?: () => void;
+  active?: boolean;
+  activeClass?: string;
+  children: ReactNode;
+}
+
+function ActionButton({ label, onClick, active, activeClass = 'text-secondary', children }: ActionButtonProps) {
   return (
     <button
       type="button"
@@ -326,11 +337,17 @@ function ActionButton({ label, onClick, active, activeClass = 'text-secondary', 
   );
 }
 
-function MessageActions({ message, onRegenerate, onBranch }) {
-  const [copied, setCopied] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-  const [speaking, setSpeaking] = useState(false);
-  const keepAliveRef = useRef(null);
+interface MessageActionsProps {
+  message: ChatMessage;
+  onRegenerate?: () => void;
+  onBranch?: () => void;
+}
+
+function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps) {
+  const [copied, setCopied] = useState<boolean>(false);
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const [speaking, setSpeaking] = useState<boolean>(false);
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopKeepAlive = () => {
     if (keepAliveRef.current) {
@@ -480,10 +497,24 @@ function MessageActions({ message, onRegenerate, onBranch }) {
   );
 }
 
-export default function ChatBubble({ message, isStreaming = false, onRegenerate, onBranch, onAskAbout }) {
+export interface ChatBubbleProps {
+  message: ChatMessage;
+  isStreaming?: boolean;
+  onRegenerate?: () => void;
+  onBranch?: () => void;
+  onAskAbout?: (text: string) => void;
+}
+
+export default function ChatBubble({
+  message,
+  isStreaming = false,
+  onRegenerate,
+  onBranch,
+  onAskAbout
+}: ChatBubbleProps) {
   const isUser = message.role === 'user';
-  const showActions = !isUser && !isStreaming && message.content && message.content.trim().length > 0;
-  const [expandedSource, setExpandedSource] = useState(null);
+  const showActions = !isUser && !isStreaming && !!message.content && message.content.trim().length > 0;
+  const [expandedSource, setExpandedSource] = useState<number | null>(null);
 
   if (isUser) {
     return (
@@ -514,16 +545,16 @@ export default function ChatBubble({ message, isStreaming = false, onRegenerate,
 
         {message.sources && message.sources.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-glass-border">
-            {message.sources.map((source, i) => {
-              const web = isWebSource(source);
-              if (web) {
+            {message.sources.map((source: string | ChatSource, i: number) => {
+              if (isWebSource(source)) {
+                const webSource = source as ChatSource;
                 return (
                   <a
                     key={i}
-                    href={source.url}
+                    href={webSource.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title={source.text_snippet || source.url}
+                    title={webSource.text_snippet || webSource.url}
                     className="px-3 py-1 rounded-full bg-slate-800 text-on-surface-variant font-citation text-citation cursor-pointer hover:bg-slate-700 transition-colors flex items-center gap-1.5"
                   >
                     <Globe className="w-3 h-3" />
@@ -532,6 +563,8 @@ export default function ChatBubble({ message, isStreaming = false, onRegenerate,
                   </a>
                 );
               }
+
+              const docSource = typeof source === 'object' && source !== null ? (source as ChatSource) : null;
 
               return (
                 <div key={i} className="relative">
@@ -548,7 +581,7 @@ export default function ChatBubble({ message, isStreaming = false, onRegenerate,
                     <span>{formatSourceLabel(source)}</span>
                   </button>
                   <AnimatePresence>
-                    {expandedSource === i && source.text_snippet && (
+                    {expandedSource === i && docSource?.text_snippet && (
                       <motion.div
                         initial={{ opacity: 0, y: 4, scale: 0.96 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -556,10 +589,10 @@ export default function ChatBubble({ message, isStreaming = false, onRegenerate,
                         transition={{ duration: 0.15 }}
                         className="absolute bottom-full left-0 mb-2 z-30 w-72 p-3 rounded-xl border border-glass-border bg-slate-800 shadow-xl backdrop-blur-xl text-left"
                       >
-                        <p className="text-xs text-on-surface-variant leading-relaxed">{source.text_snippet}</p>
+                        <p className="text-xs text-on-surface-variant leading-relaxed">{docSource.text_snippet}</p>
                         <div className="mt-2 flex items-center gap-1.5 text-on-surface-variant/70">
                           <FileText className="w-3 h-3" />
-                          <span className="text-[10px]">Page {source.page_number || 'N/A'}</span>
+                          <span className="text-[10px]">Page {docSource.page_number || 'N/A'}</span>
                         </div>
                       </motion.div>
                     )}

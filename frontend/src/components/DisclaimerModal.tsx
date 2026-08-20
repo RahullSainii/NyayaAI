@@ -1,7 +1,12 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles } from 'lucide-react';
 
-export default function DisclaimerModal({ ack, onAccept }) {
+export interface DisclaimerModalProps {
+  ack: boolean;
+  onAccept: () => void;
+}
+
+export default function DisclaimerModal({ ack, onAccept }: DisclaimerModalProps) {
   return (
     <AnimatePresence>
       {!ack && (
@@ -45,5 +50,5 @@ export default function DisclaimerModal({ ack, onAccept }) {
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }

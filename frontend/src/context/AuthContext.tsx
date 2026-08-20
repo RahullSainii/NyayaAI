@@ -1,13 +1,14 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { apiUrl } from '../lib/api';
+import type { User, AuthResponse, AuthContextType } from '../types';
 
-const AuthContext = createContext(null);
+const AuthContext = createContext<AuthContextType | null>(null);
 
 /**
  * Decode a JWT payload without any library (browser-only).
  * Returns null if the token is malformed.
  */
-function decodeJwtPayload(token) {
+function decodeJwtPayload(token: string): { exp?: number; [key: string]: any } | null {
   try {
     const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(atob(base64));
@@ -19,21 +20,21 @@ function decodeJwtPayload(token) {
 /**
  * Returns true if the token's `exp` claim is in the past (or missing).
  */
-function isTokenExpired(token) {
+function isTokenExpired(token: string): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload || !payload.exp) return true;
   // 60-second grace buffer so we refresh slightly before actual expiry.
   return Date.now() >= (payload.exp * 1000) - 60_000;
 }
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Attempt to silently refresh an expired token using the /auth/refresh
   // endpoint added in Day 2. Falls back to logout if the refresh fails.
-  const tryRefreshToken = useCallback(async (currentToken) => {
+  const tryRefreshToken = useCallback(async (currentToken: string): Promise<string | null> => {
     try {
       const res = await fetch(apiUrl('/auth/refresh'), {
         method: 'POST',
@@ -82,7 +83,7 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, [tryRefreshToken]);
 
-  const login = async (email, password) => {
+  const login = async (email: string, password: string): Promise<AuthResponse> => {
     const res = await fetch(apiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,7 +99,7 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const googleLoginSuccess = (userData, tokenStr) => {
+  const googleLoginSuccess = (userData: User, tokenStr: string) => {
     setUser(userData);
     setToken(tokenStr);
     localStorage.setItem('nyayaai_token', tokenStr);
@@ -106,7 +107,7 @@ export function AuthProvider({ children }) {
   };
 
   // Exchange a Google access token for our own backend-issued JWT.
-  const loginWithGoogle = async (accessToken) => {
+  const loginWithGoogle = async (accessToken: string): Promise<AuthResponse> => {
     const res = await fetch(apiUrl('/auth/google'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -122,7 +123,7 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const register = async (name, email, password) => {
+  const register = async (name: string, email: string, password: string): Promise<{ message: string; user?: User; token?: string }> => {
     const res = await fetch(apiUrl('/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -133,7 +134,7 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const forgotPassword = async (email) => {
+  const forgotPassword = async (email: string): Promise<{ message: string }> => {
     const res = await fetch(apiUrl('/auth/forgot-password'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -144,7 +145,7 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const resetPassword = async (resetToken, password) => {
+  const resetPassword = async (resetToken: string, password: string): Promise<{ message: string }> => {
     const res = await fetch(apiUrl('/auth/reset-password'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -181,7 +182,7 @@ export function AuthProvider({ children }) {
   );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;

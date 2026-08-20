@@ -5,7 +5,13 @@ import { ArrowRight, LogOut, User, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/nyaya.jpeg';
 
-const navLinks = [
+interface NavLinkItem {
+  label: string;
+  path?: string;
+  href?: string;
+}
+
+const navLinks: NavLinkItem[] = [
   { label: 'IPC to BNS', path: '/mapping' },
   { label: 'Sections', path: '/mapping' },
   { label: 'Ask AI', path: '/chat' },
@@ -16,8 +22,8 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState<boolean>(false);
+  const [mobileOpen, setMobileOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -77,7 +83,7 @@ export default function Navbar() {
                   return (
                     <Link
                       key={link.label}
-                      to={link.path}
+                      to={link.path || '/'}
                       className={`relative text-sm font-medium transition-all duration-200 ${
                         isActive
                           ? 'text-gold'
@@ -184,7 +190,7 @@ export default function Navbar() {
                         {link.label}
                       </a>
                     ) : (
-                      <Link to={link.path} onClick={() => setMobileOpen(false)} className={`text-3xl font-display font-medium transition-colors ${isActive ? 'text-gold' : 'text-text-primary hover:text-gold'}`}>
+                      <Link to={link.path || '/'} onClick={() => setMobileOpen(false)} className={`text-3xl font-display font-medium transition-colors ${isActive ? 'text-gold' : 'text-text-primary hover:text-gold'}`}>
                         {link.label}
                       </Link>
                     )}

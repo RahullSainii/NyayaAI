@@ -1,14 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot, MessageSquare, Circle, Sparkles, X } from 'lucide-react'
+import { Bot, MessageSquare, Circle, Sparkles } from 'lucide-react'
 import ChatBubble from '../components/ChatBubble'
 import TypingIndicator from '../components/TypingIndicator'
 import ChatSidebar from '../components/ChatSidebar'
 import ChatInputArea from '../components/ChatInputArea'
 import DisclaimerModal from '../components/DisclaimerModal'
 import logo from '../assets/nyaya.jpeg'
+import { apiUrl } from '../lib/api'
+import type { ChatMessage, ChatSession, Attachment, ChatMenuState } from '../types'
 
-const WELCOME_MESSAGE = {
+declare global {
+  interface Window {
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  }
+}
+
+const WELCOME_MESSAGE: ChatMessage = {
   role: 'ai',
   welcome: true,
   content:
@@ -19,7 +28,14 @@ const WELCOME_MESSAGE = {
 // Chat history is persisted to localStorage so previous conversations survive reloads.
 const CHATS_KEY = 'nyayaai_chats'
 
-function SessionMenuItem({ icon, label, onClick, danger }) {
+interface SessionMenuItemProps {
+  icon: string;
+  label: string;
+  onClick: () => void | Promise<void>;
+  danger?: boolean;
+}
+
+function SessionMenuItem({ icon, label, onClick, danger }: SessionMenuItemProps) {
   return (
     <button
       type="button"
@@ -34,7 +50,12 @@ function SessionMenuItem({ icon, label, onClick, danger }) {
   )
 }
 
-const loadPersistedChats = () => {
+interface PersistedChatData {
+  sessions: ChatSession[];
+  messages: Record<string | number, ChatMessage[]>;
+}
+
+const loadPersistedChats = (): PersistedChatData | null => {
   try {
     const raw = localStorage.getItem(CHATS_KEY)
     if (!raw) return null
@@ -46,7 +67,7 @@ const loadPersistedChats = () => {
   }
 }
 
-const DEFAULT_SESSIONS = [
+const DEFAULT_SESSIONS: ChatSession[] = [
   { id: 1, title: 'New Conversation', active: true },
 ]
 
@@ -58,39 +79,39 @@ const MAX_ATTACH_CHARS = 20000        // per plain-text file (matches backend ex
 const MAX_ATTACH_TEXT_CHARS = 24000   // combined attachment_text cap (matches backend)
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB
 
-const STREAMING_MESSAGE = {
+const STREAMING_MESSAGE: ChatMessage = {
   role: 'ai',
   content: '',
   sources: [],
 }
 
 function Chat() {
-  const persistedChats = useRef(loadPersistedChats()).current
-  const [messages, setMessages] = useState(() => {
+  const persistedChats = useRef<PersistedChatData | null>(loadPersistedChats()).current
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const active = (persistedChats?.sessions || []).find((s) => s.active)
     if (active && persistedChats?.messages?.[active.id]?.length) {
       return persistedChats.messages[active.id]
     }
     return [WELCOME_MESSAGE]
   })
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [chatSessions, setChatSessions] = useState(
+  const [input, setInput] = useState<string>('')
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(
     persistedChats?.sessions?.length ? persistedChats.sessions : DEFAULT_SESSIONS,
   )
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [menu, setMenu] = useState(null) // { id, top, left } for the session "..." menu
-  const [renamingId, setRenamingId] = useState(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [showArchived, setShowArchived] = useState(false)
-  const [disclaimerAck, setDisclaimerAck] = useState(() => {
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
+  const [menu, setMenu] = useState<ChatMenuState | null>(null) // { id, top, left } for the session "..." menu
+  const [renamingId, setRenamingId] = useState<number | string | null>(null)
+  const [renameValue, setRenameValue] = useState<string>('')
+  const [showArchived, setShowArchived] = useState<boolean>(false)
+  const [disclaimerAck, setDisclaimerAck] = useState<boolean>(() => {
     try {
       return localStorage.getItem('nyayaai_disclaimer_ack') === 'true'
     } catch {
       return true
     }
   })
-  const sessionMessagesRef = useRef(persistedChats?.messages ? { ...persistedChats.messages } : {})
+  const sessionMessagesRef = useRef<Record<string | number, ChatMessage[]>>(persistedChats?.messages ? { ...persistedChats.messages } : {})
 
   const acceptDisclaimer = () => {
     try {
@@ -101,16 +122,16 @@ function Chat() {
     setDisclaimerAck(true)
   }
 
-  const messagesEndRef = useRef(null)
-  const textareaRef = useRef(null)
-  const recognitionRef = useRef(null)
-  const speechBaseRef = useRef('')
-  const finalTranscriptRef = useRef('')
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingNotSupported, setRecordingNotSupported] = useState(false)
-  const fileInputRef = useRef(null)
-  const attachIdRef = useRef(0)
-  const [attachments, setAttachments] = useState([])
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const recognitionRef = useRef<any>(null)
+  const speechBaseRef = useRef<string>('')
+  const finalTranscriptRef = useRef<string>('')
+  const [isRecording, setIsRecording] = useState<boolean>(false)
+  const [recordingNotSupported, setRecordingNotSupported] = useState<boolean>(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const attachIdRef = useRef<number>(0)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -149,7 +170,7 @@ function Chat() {
     recognition.interimResults = true
     recognition.lang = 'en-IN'
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       let interim = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript
@@ -169,7 +190,7 @@ function Chat() {
       setInput(joined)
     }
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       console.warn('Speech recognition error:', event.error)
       setIsRecording(false)
     }
@@ -201,7 +222,7 @@ function Chat() {
   ]
   const archivedSessions = chatSessions.filter((s) => s.archived)
 
-  const handleSelectSession = (id) => {
+  const handleSelectSession = (id: number | string) => {
     setChatSessions((prev) => {
       const currentActive = prev.find((s) => s.active)
       if (currentActive) {
@@ -241,7 +262,7 @@ function Chat() {
     }
   }
 
-  const handleDeleteSession = (id) => {
+  const handleDeleteSession = (id: number | string) => {
     if (isLoading) return // don't delete while a response is streaming
 
     const wasActive = chatSessions.find((s) => s.id === id)?.active
@@ -269,7 +290,7 @@ function Chat() {
     setChatSessions(nextSessions)
   }
 
-  const openMenu = (event, id) => {
+  const openMenu = (event: React.MouseEvent<HTMLElement>, id: number | string) => {
     event.stopPropagation()
     if (menu?.id === id) {
       setMenu(null)
@@ -283,13 +304,13 @@ function Chat() {
     })
   }
 
-  const startRename = (session) => {
+  const startRename = (session: ChatSession) => {
     setMenu(null)
     setRenamingId(session.id)
     setRenameValue(session.title)
   }
 
-  const commitRename = (id) => {
+  const commitRename = (id: number | string) => {
     const title = renameValue.trim().slice(0, 80) || 'Untitled'
     setChatSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)))
     setRenamingId(null)
@@ -301,12 +322,12 @@ function Chat() {
     setRenameValue('')
   }
 
-  const togglePin = (id) => {
+  const togglePin = (id: number | string) => {
     setMenu(null)
     setChatSessions((prev) => prev.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)))
   }
 
-  const toggleArchive = (id) => {
+  const toggleArchive = (id: number | string) => {
     setMenu(null)
     const target = chatSessions.find((s) => s.id === id)
     if (!target) return
@@ -337,7 +358,7 @@ function Chat() {
     }
   }
 
-  const shareSession = async (id) => {
+  const shareSession = async (id: number | string) => {
     setMenu(null)
     const active = chatSessions.find((s) => s.active)
     const msgs = active && active.id === id ? messages : sessionMessagesRef.current[id] || []
@@ -366,9 +387,10 @@ function Chat() {
   useEffect(() => {
     if (!menu) return
     const close = () => setMenu(null)
-    const onKey = (e) => { if (e.key === 'Escape') setMenu(null) }
-    const onDown = (e) => {
-      if (!e.target.closest('[data-session-menu]') && !e.target.closest('[data-session-optbtn]')) {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null) }
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && !target.closest('[data-session-menu]') && !target.closest('[data-session-optbtn]')) {
         setMenu(null)
       }
     }
@@ -384,7 +406,7 @@ function Chat() {
     }
   }, [menu])
 
-  const renderSessionRow = (session, isArchived = false) => (
+  const renderSessionRow = (session: ChatSession, isArchived: boolean = false) => (
     <div
       key={session.id}
       data-session-row
@@ -431,7 +453,7 @@ function Chat() {
     </div>
   )
 
-  const updateStreamingMessage = (updater) => {
+  const updateStreamingMessage = (updater: (msg: ChatMessage) => ChatMessage) => {
     setMessages((prev) => {
       const next = [...prev]
       const lastMessage = next[next.length - 1]
@@ -445,7 +467,17 @@ function Chat() {
     })
   }
 
-  const streamAssistantReply = async (query, history = [], extra = {}) => {
+  const streamAssistantReply = async (
+    query: string,
+    history: Array<{ role: string; content: string }> = [],
+    extra: {
+      attachmentText?: string;
+      attachmentName?: string;
+      imageData?: string;
+      imageMime?: string;
+      imageName?: string;
+    } = {},
+  ) => {
     setIsLoading(true)
 
     try {
@@ -538,7 +570,7 @@ function Chat() {
           }
         }
       }
-    } catch (error) {
+    } catch {
       updateStreamingMessage(() => ({
         role: 'ai',
         content:
@@ -552,7 +584,7 @@ function Chat() {
 
   // Build the recent conversation to send as context, skipping the canned
   // welcome greeting and any empty placeholders.
-  const buildHistory = (msgs) =>
+  const buildHistory = (msgs: ChatMessage[]): Array<{ role: string; content: string }> =>
     msgs
       .filter((m) => !m.welcome && m.content && m.content.trim().length > 0)
       .slice(-6)
@@ -561,7 +593,7 @@ function Chat() {
         content: m.content,
       }))
 
-  const sendMessage = (text) => {
+  const sendMessage = (text: string) => {
     const trimmed = text.trim()
     const docs = attachments.filter((a) => a.content)
     const image = attachments.find((a) => a.imageData)
@@ -589,15 +621,15 @@ function Chat() {
     const note = ready.length ? `${trimmed ? '\n\n' : ''}[Attached: ${allNames}]` : ''
     const displayContent = `${trimmed}${note}`.trim() || `[Attached: ${allNames}]`
 
-    const userMessage = { role: 'user', content: displayContent }
+    const userMessage: ChatMessage = { role: 'user', content: displayContent }
     setMessages((prev) => [...prev, userMessage])
 
-    const activeSession = chatSessions.find((s) => s.active)
-    if (activeSession && activeSession.title === 'New Conversation') {
+    const active = chatSessions.find((s) => s.active)
+    if (active && active.title === 'New Conversation') {
       const seed = (trimmed || ready[0]?.name || 'New Conversation').slice(0, 50)
       setChatSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id ? { ...s, title: seed } : s,
+          s.id === active.id ? { ...s, title: seed } : s,
         ),
       )
     }
@@ -616,14 +648,14 @@ function Chat() {
   }
 
   const handleSend = () => sendMessage(input)
-  const handleSuggestionClick = (text) => sendMessage(text)
+  const handleSuggestionClick = (text: string) => sendMessage(text)
 
   const handleRegenerate = () => {
     if (isLoading) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
 
-    const priorMessages = []
+    const priorMessages: ChatMessage[] = []
     setMessages((prev) => {
       const next = [...prev]
       if (next.length > 0 && next[next.length - 1].role === 'ai') {
@@ -637,7 +669,7 @@ function Chat() {
     streamAssistantReply(lastUserMsg.content, buildHistory(priorMessages))
   }
 
-  const handleBranch = (messageIndex) => {
+  const handleBranch = (messageIndex: number) => {
     const newId = Date.now()
     const branchMessages = messages.slice(0, messageIndex + 1)
 
@@ -657,14 +689,14 @@ function Chat() {
     setInput('')
   }
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       handleSend()
     }
   }
 
-  const handleAskAbout = (selectedText) => {
+  const handleAskAbout = (selectedText: string) => {
     const query = `Regarding: "${selectedText}"\n\nTell me more about this.`
     sendMessage(query)
   }
@@ -693,7 +725,7 @@ function Chat() {
   const handleAttachClick = () => fileInputRef.current?.click()
 
   // PDF / DOCX and other non-plain-text files are extracted server-side.
-  const extractViaBackend = async (file) => {
+  const extractViaBackend = async (file: File): Promise<{ content?: string; truncated?: boolean }> => {
     const token = localStorage.getItem('nyayaai_token')
     const form = new FormData()
     form.append('file', file)
@@ -707,7 +739,7 @@ function Chat() {
     return { content: data.text, truncated: data.truncated }
   }
 
-  const readImageAsBase64 = (file) =>
+  const readImageAsBase64 = (file: File): Promise<{ imageData: string; imageMime: string; dataUrl: string }> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => {
@@ -724,7 +756,7 @@ function Chat() {
       reader.readAsDataURL(file)
     })
 
-  const handleFilesSelected = async (event) => {
+  const handleFilesSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     event.target.value = '' // allow re-selecting the same file later
     for (const file of files) {
@@ -732,11 +764,12 @@ function Chat() {
       const isImage = IMAGE_EXT.test(file.name) || (file.type || '').startsWith('image/')
       setAttachments((prev) => [...prev, { id, name: file.name, loading: true, isImage }])
       try {
-        let result
+        let result: Partial<Attachment> = {}
         if (isImage) {
           // Screenshots / photos: sent to a vision model as base64.
           if (file.size > MAX_IMAGE_BYTES) throw new Error('Image too large (max 5 MB)')
-          result = { isImage: true, ...(await readImageAsBase64(file)) }
+          const imgData = await readImageAsBase64(file)
+          result = { isImage: true, ...imgData }
         } else if (ATTACHABLE_EXT.test(file.name)) {
           // Plain text: read directly in the browser (no round-trip).
           const text = await file.text()
@@ -745,16 +778,17 @@ function Chat() {
           // PDF / DOCX / etc.: extract text on the server.
           result = await extractViaBackend(file)
         }
-        setAttachments((prev) => prev.map((a) => (a.id === id ? { id, name: file.name, ...result } : a)))
-      } catch (err) {
+        setAttachments((prev) => prev.map((a) => (a.id === id ? { id, name: file.name, ...result, loading: false } : a)))
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to read file'
         setAttachments((prev) =>
-          prev.map((a) => (a.id === id ? { id, name: file.name, error: err.message || 'Failed to read file' } : a)),
+          prev.map((a) => (a.id === id ? { id, name: file.name, error: errorMsg, loading: false } : a)),
         )
       }
     }
   }
 
-  const removeAttachment = (id) =>
+  const removeAttachment = (id: number | string) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id))
 
   const suggestions = [
