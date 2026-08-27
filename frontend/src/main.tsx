@@ -3,10 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import './index.css';
+import { GOOGLE_CLIENT_ID } from './lib/runtimeConfig';
 
 import * as Sentry from '@sentry/react';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
 
 // Initialize Sentry for error tracking
 Sentry.init({
@@ -50,4 +50,5 @@ createRoot(rootElement).render(
     )}
   </StrictMode>,
 );
+
 
