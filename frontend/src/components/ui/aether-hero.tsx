@@ -206,10 +206,10 @@ export default function AetherHero({
     // Re-fit after layout settles (the hero uses height:auto and animates its
     // content in, so the first measure can be too small in a production build).
     requestAnimationFrame(fit);
-    setTimeout(fit, 200);
+    const settleTimer = window.setTimeout(fit, 200);
     const onResize = () => fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(canvas.parentElement || canvas);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    ro?.observe(canvas.parentElement || canvas);
     window.addEventListener('resize', onResize);
 
     // RAF — pauses when off-screen to save GPU/battery
@@ -233,25 +233,28 @@ export default function AetherHero({
     };
 
     // Observe visibility to pause/resume the shader loop
-    const visibilityObserver = new IntersectionObserver(
-      ([entry]) => {
-        isVisibleRef.current = entry.isIntersecting;
-        if (entry.isIntersecting && !prefersReducedMotion) {
-          // Resume the loop
-          rafRef.current = requestAnimationFrame(loop);
-        }
-      },
-      { threshold: 0.05 }
-    );
-    visibilityObserver.observe(canvas);
+    const visibilityObserver = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver(
+        ([entry]) => {
+          isVisibleRef.current = entry.isIntersecting;
+          if (entry.isIntersecting && !prefersReducedMotion) {
+            // Resume the loop
+            rafRef.current = requestAnimationFrame(loop);
+          }
+        },
+        { threshold: 0.05 }
+      )
+      : null;
+    visibilityObserver?.observe(canvas);
 
     // Render at least one frame (even with reduced motion)
     rafRef.current = requestAnimationFrame(loop);
 
     // Cleanup
     return () => {
-      visibilityObserver.disconnect();
-      ro.disconnect();
+      window.clearTimeout(settleTimer);
+      visibilityObserver?.disconnect();
+      ro?.disconnect();
       window.removeEventListener('resize', onResize);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (bufRef.current) gl.deleteBuffer(bufRef.current);
@@ -440,3 +443,5 @@ export default function AetherHero({
     </section>
   );
 }
+
+
