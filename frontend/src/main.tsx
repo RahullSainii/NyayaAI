@@ -25,8 +25,10 @@ Sentry.init({
 
 if (!GOOGLE_CLIENT_ID) {
   console.error(
-    '[NyayaAI] Missing VITE_GOOGLE_CLIENT_ID environment variable. ' +
-    'Google OAuth will not work. Set it in your .env file.'
+    '[NyayaAI] Missing VITE_GOOGLE_CLIENT_ID. Google sign-in will not work.\n' +
+    '  → Create frontend/.env (NOT the repo-root .env) with:\n' +
+    '      VITE_GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com\n' +
+    '  → Then restart the dev server or rebuild.'
   );
 }
 
