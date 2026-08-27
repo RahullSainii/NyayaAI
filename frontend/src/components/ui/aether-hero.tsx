@@ -212,20 +212,45 @@ export default function AetherHero({
     ro.observe(canvas.parentElement || canvas);
     window.addEventListener('resize', onResize);
 
-    // RAF
+    // RAF — pauses when off-screen to save GPU/battery
+    const isVisibleRef = { current: true };
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const loop = (now: number) => {
+      if (!isVisibleRef.current) {
+        // Don't schedule another frame — IntersectionObserver will restart us
+        return;
+      }
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.useProgram(prog);
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       if (uniResRef.current) gl.uniform2f(uniResRef.current, canvas.width, canvas.height);
       if (uniTimeRef.current) gl.uniform1f(uniTimeRef.current, now * 1e-3);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      rafRef.current = requestAnimationFrame(loop);
+      if (!prefersReducedMotion) {
+        rafRef.current = requestAnimationFrame(loop);
+      }
     };
+
+    // Observe visibility to pause/resume the shader loop
+    const visibilityObserver = new IntersectionObserver(
+      ([entry]) => {
+        isVisibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting && !prefersReducedMotion) {
+          // Resume the loop
+          rafRef.current = requestAnimationFrame(loop);
+        }
+      },
+      { threshold: 0.05 }
+    );
+    visibilityObserver.observe(canvas);
+
+    // Render at least one frame (even with reduced motion)
     rafRef.current = requestAnimationFrame(loop);
 
     // Cleanup
     return () => {
+      visibilityObserver.disconnect();
       ro.disconnect();
       window.removeEventListener('resize', onResize);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);

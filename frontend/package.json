@@ -12,13 +12,19 @@
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",
+    "@sentry/react": "^10.71.0",
     "axios": "^1.17.0",
     "framer-motion": "^12.40.0",
     "jspdf": "^2.5.2",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.4"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.30.4",
+    "react-virtuoso": "^4.18.12",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

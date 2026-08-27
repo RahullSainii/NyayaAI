@@ -16,8 +16,16 @@ const formVariants: Variants = {
 function PasswordStrength({ password }: { password: string }) {
   const strength = useMemo(() => {
     if (!password) return { level: 0, label: '', color: '' };
-    if (password.length < 6) return { level: 1, label: 'Weak', color: 'bg-red-500' };
-    if (password.length < 10) return { level: 2, label: 'Medium', color: 'bg-yellow-500' };
+
+    let score = 0;
+    if (password.length >= 6) score++;
+    if (password.length >= 10) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    if (score <= 1) return { level: 1, label: 'Weak', color: 'bg-red-500' };
+    if (score <= 3) return { level: 2, label: 'Medium', color: 'bg-yellow-500' };
     return { level: 3, label: 'Strong', color: 'bg-emerald-500' };
   }, [password]);
   
@@ -321,8 +329,8 @@ export default function AuthPage({ mode = 'login' }: AuthPageProps) {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="auth-toggle-password absolute right-3.5 text-muted-blue hover:text-text-primary transition-colors focus:outline-none"
-                    tabIndex={-1}
+                    className="auth-toggle-password absolute right-3.5 text-muted-blue hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -350,8 +358,8 @@ export default function AuthPage({ mode = 'login' }: AuthPageProps) {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="auth-toggle-password absolute right-3.5 text-muted-blue hover:text-text-primary transition-colors focus:outline-none"
-                    tabIndex={-1}
+                    className="auth-toggle-password absolute right-3.5 text-muted-blue hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>

@@ -10,6 +10,9 @@ import Navbar from '../components/Navbar';
 import logo from '../assets/nyaya.jpeg';
 import AetherHero from '../components/ui/aether-hero';
 
+const TranslateIcon = ({ size, className }: { size?: number | string; className?: string }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
+);
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: (delay = 0) => ({
@@ -39,16 +42,23 @@ function CountUpStat({ end, label, suffix = '', duration = 2.5 }: CountUpStatPro
   useEffect(() => {
     if (isInView) {
       let startTimestamp: number | null = null;
+      let animationFrameId: number;
+      let mounted = true;
       const step = (timestamp: number) => {
         if (!startTimestamp) startTimestamp = timestamp;
         const progress = Math.min((timestamp - startTimestamp) / (duration * 1000), 1);
         const easeProgress = 1 - Math.pow(1 - progress, 4);
-        setCount(Math.floor(easeProgress * end));
-        if (progress < 1) {
-          window.requestAnimationFrame(step);
+        if (mounted) setCount(Math.floor(easeProgress * end));
+        if (progress < 1 && mounted) {
+          animationFrameId = window.requestAnimationFrame(step);
         }
       };
-      window.requestAnimationFrame(step);
+      animationFrameId = window.requestAnimationFrame(step);
+
+      return () => {
+        mounted = false;
+        if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+      };
     }
   }, [isInView, end, duration]);
 
@@ -101,13 +111,23 @@ function SpotlightCard({ children, className = '' }: SpotlightCardProps) {
   );
 }
 
-interface FloatingMockupProps {
-  mousePos: { x: number; y: number };
-}
+const FloatingMockup = () => {
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
-const FloatingMockup = ({ mousePos }: FloatingMockupProps) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width * 2 - 1;
+    const y = (e.clientY - rect.top) / rect.height * 2 - 1;
+    setMousePos({ x, y });
+  };
+
   return (
     <div 
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setMousePos({ x: 0, y: 0 })}
       className="relative w-full max-w-lg mx-auto md:max-w-xl lg:max-w-2xl aspect-[4/3] perspective-1000"
       style={{
         transform: `rotateY(${mousePos.x * 5}deg) rotateX(${-mousePos.y * 5}deg) translateY(${mousePos.y * 10}px)`,
@@ -186,17 +206,6 @@ const FloatingMockup = ({ mousePos }: FloatingMockupProps) => {
 
 
 export default function Landing() {
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const heroRef = useRef<HTMLDivElement>(null);
-
-  const handleHeroMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!heroRef.current) return;
-    const rect = heroRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width * 2 - 1;
-    const y = (e.clientY - rect.top) / rect.height * 2 - 1;
-    setMousePos({ x, y });
-  };
-
   const headline = "Indian law, made clear and usable for real people.";
   const headlineWords = headline.split(" ");
 
@@ -207,8 +216,6 @@ export default function Landing() {
       {/* 1. CINEMATIC HERO SECTION */}
       <AetherHero height="auto" className="pt-20 lg:pt-32 pb-10">
         <div 
-          ref={heroRef}
-          onMouseMove={handleHeroMouseMove}
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full"
         >
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center w-full">
@@ -283,13 +290,14 @@ export default function Landing() {
               className="relative lg:h-full flex items-center justify-center mt-12 lg:mt-0"
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-gold/5 via-transparent to-surface-2/20 rounded-[2rem] transform -rotate-3 scale-105 blur-xl -z-10" />
-              <FloatingMockup mousePos={mousePos} />
+              <FloatingMockup />
             </motion.div>
 
           </div>
         </div>
       </AetherHero>
 
+      <main id="main-content">
       {/* 2. STATS SECTION */}
       <section className="py-12 border-y border-line bg-surface/30 relative z-20 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -427,7 +435,7 @@ export default function Landing() {
               {[
                 { step: "01", title: "Ask", desc: "Type your query in plain language, describing the legal scenario or specific section.", icon: MessageSquare },
                 { step: "02", title: "Analyze", desc: "Our engine maps your query against the BNS, IPC, and relevant procedures.", icon: BrainCircuit },
-                { step: "03", title: "Translate", desc: "Complex legal jargon is broken down into clear, understandable insights.", icon: ({ size, className }: { size?: number | string; className?: string }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg> },
+                { step: "03", title: "Translate", desc: "Complex legal jargon is broken down into clear, understandable insights.", icon: TranslateIcon },
                 { step: "04", title: "Apply", desc: "Use the cited sources and structured answers to inform your next steps.", icon: Landmark }
               ].map((item, idx) => (
                 <motion.div 
@@ -458,7 +466,7 @@ export default function Landing() {
         <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-ink to-transparent z-10 pointer-events-none" />
         <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-ink to-transparent z-10 pointer-events-none" />
         
-        <div className="flex w-max animate-marquee whitespace-nowrap">
+        <div className="flex w-max marquee-track whitespace-nowrap">
           {[...Array(2)].map((_, i) => (
             <div key={i} className="flex items-center gap-16 px-8">
               {[
@@ -479,7 +487,7 @@ export default function Landing() {
         {/* Background Effects */}
         <div className="absolute inset-0 bg-ink z-0" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-gold/10 blur-[120px] rounded-[100%] pointer-events-none z-0" />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none z-0" />
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\' opacity=\'0.04\'/%3E%3C/svg%3E')] opacity-20 mix-blend-overlay pointer-events-none z-0" />
         
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
           <SpotlightCard className="p-12 md:p-20 text-center border-gold/20 shadow-[0_0_80px_rgba(212,166,78,0.15)] bg-surface-glass-strong">
@@ -504,6 +512,8 @@ export default function Landing() {
         </div>
       </section>
 
+      </main>
+
       {/* 7. FOOTER */}
       <footer className="bg-ink border-t border-line relative overflow-hidden">
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-gold to-transparent opacity-30" />
@@ -524,25 +534,24 @@ export default function Landing() {
               <ul className="space-y-4 text-sm text-fg-muted">
                 <li><Link to="/chat" className="hover:text-gold transition-colors">AI Assistant</Link></li>
                 <li><Link to="/mapping" className="hover:text-gold transition-colors">IPC-BNS Map</Link></li>
-                <li><Link to="/pricing" className="hover:text-gold transition-colors">Pricing</Link></li>
               </ul>
             </div>
             
             <div>
               <h4 className="text-fg font-semibold mb-6">Resources</h4>
               <ul className="space-y-4 text-sm text-fg-muted">
-                <li><a href="#" className="hover:text-gold transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-gold transition-colors">Legal Blog</a></li>
-                <li><a href="#" className="hover:text-gold transition-colors">API Access</a></li>
+                <li><a href="#" title="Coming Soon" className="hover:text-gold transition-colors">Documentation</a></li>
+                <li><a href="#" title="Coming Soon" className="hover:text-gold transition-colors">Legal Blog</a></li>
+                <li><a href="#" title="Coming Soon" className="hover:text-gold transition-colors">API Access</a></li>
               </ul>
             </div>
             
             <div>
               <h4 className="text-fg font-semibold mb-6">Legal</h4>
               <ul className="space-y-4 text-sm text-fg-muted">
-                <li><a href="#" className="hover:text-gold transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-gold transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-gold transition-colors">Disclaimer</a></li>
+                <li><a href="#" title="Coming Soon" className="hover:text-gold transition-colors">Privacy Policy</a></li>
+                <li><a href="#" title="Coming Soon" className="hover:text-gold transition-colors">Terms of Service</a></li>
+                <li><a href="#" title="Coming Soon" className="hover:text-gold transition-colors">Disclaimer</a></li>
               </ul>
             </div>
           </div>
@@ -555,20 +564,6 @@ export default function Landing() {
           </div>
         </div>
       </footer>
-      
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes float {
-          0% { transform: translateY(0px); }
-          100% { transform: translateY(-20px); }
-        }
-        @keyframes marquee {
-          0% { transform: translateX(0%); }
-          100% { transform: translateX(-50%); }
-        }
-        .animate-marquee {
-          animation: marquee 25s linear infinite;
-        }
-      `}} />
     </div>
   );
 }

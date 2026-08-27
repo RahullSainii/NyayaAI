@@ -1,8 +1,10 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, memo } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import { SkipToContent } from './components/SkipToContent';
 
 // Lazy-load route-level components for automatic code splitting.
 const Landing  = lazy(() => import('./pages/Landing'));
@@ -11,38 +13,53 @@ const Mapping  = lazy(() => import('./pages/Mapping'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
+/** Shared page transition duration in seconds */
+const PAGE_TRANSITION_DURATION = 0.25;
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-navy flex items-center justify-center">
-        <div className="auth-spinner" />
+      <div className="flex min-h-screen items-center justify-center bg-ink">
+        <div className="auth-spinner" role="status" aria-label="Loading">
+          <span className="sr-only">Loading…</span>
+        </div>
       </div>
     );
   }
-  
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  
-  return <>{children}</>;
+
+  return children;
 }
 
-// Suspense fallback shown while lazy chunks load.
+/** Suspense fallback shown while lazy chunks load. */
 function PageLoader() {
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'var(--navy, #0b1322)',
-    }}>
-      <div className="auth-spinner" />
+    <div className="flex min-h-screen items-center justify-center bg-ink">
+      <div className="auth-spinner" role="status" aria-label="Loading page">
+        <span className="sr-only">Loading page…</span>
+      </div>
     </div>
   );
 }
+
+/** Shared page enter/exit animation wrapper */
+const PageTransition = memo(function PageTransition({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: PAGE_TRANSITION_DURATION }}
+    >
+      {children}
+    </motion.div>
+  );
+});
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -109,24 +126,18 @@ function AnimatedRoutes() {
               </PageTransition>
             }
           />
-          {/* Catch-all 404 */}
-          <Route path="*" element={<NotFound />} />
+          {/* Catch-all 404 — now wrapped in PageTransition for consistent animation */}
+          <Route
+            path="*"
+            element={
+              <PageTransition>
+                <NotFound />
+              </PageTransition>
+            }
+          />
         </Routes>
       </AnimatePresence>
     </Suspense>
-  );
-}
-
-function PageTransition({ children }: { children: React.ReactNode }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.25 }}
-    >
-      {children}
-    </motion.div>
   );
 }
 
@@ -135,7 +146,10 @@ export default function App() {
     <Router>
       <ErrorBoundary>
         <AuthProvider>
-          <AnimatedRoutes />
+          <ToastProvider>
+            <SkipToContent />
+            <AnimatedRoutes />
+          </ToastProvider>
         </AuthProvider>
       </ErrorBoundary>
     </Router>

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion, Variants } from 'framer-motion';
 import { X, ArrowRight, Scale, Shield, Gavel } from 'lucide-react';
 import { LegalSection } from '../types';
@@ -8,37 +8,75 @@ interface MappingDrawerProps {
   onClose: () => void;
 }
 
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1, delayChildren: 0.2 },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 300, damping: 24 },
+  },
+};
+
 export default function MappingDrawer({ section, onClose }: MappingDrawerProps) {
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
+    // Save current focus & body overflow
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const prevOverflow = document.body.style.overflow;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+
+      // Focus trap
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     document.body.style.overflow = 'hidden';
-    
+
+    // Focus the close button
+    const timer = setTimeout(() => {
+      const closeBtn = drawerRef.current?.querySelector<HTMLButtonElement>('[aria-label="Close drawer"]');
+      closeBtn?.focus();
+    }, 100);
+
     return () => {
+      clearTimeout(timer);
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = prevOverflow;
+      // Restore focus to the element that opened the drawer
+      previousFocusRef.current?.focus();
     };
   }, [onClose]);
-
-  const containerVariants: Variants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1,
-      transition: { 
-        staggerChildren: 0.1,
-        delayChildren: 0.2
-      }
-    }
-  };
-
-  const itemVariants: Variants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-  };
 
   return (
     <>
@@ -50,19 +88,20 @@ export default function MappingDrawer({ section, onClose }: MappingDrawerProps) 
         className="fixed inset-0 z-40 bg-ink/70 backdrop-blur-sm"
         aria-hidden="true"
       />
-      
+
       <motion.div
+        ref={drawerRef}
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
-        transition={{ type: "spring", damping: 25, stiffness: 200 }}
-        className="fixed inset-y-0 right-0 z-50 w-full md:w-[480px] bg-surface-glass-strong border-l border-line shadow-2xl overflow-y-auto flex flex-col"
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-y-auto border-l border-line bg-surface-glass-strong shadow-2xl md:w-[480px]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawer-title"
       >
-        <div className="p-6 md:p-8 flex-1">
-          <div className="flex items-start justify-between mb-8">
+        <div className="flex-1 p-6 md:p-8">
+          <div className="mb-8 flex items-start justify-between">
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <span className="bg-fg-muted/10 text-fg px-3 py-1.5 rounded-md text-sm font-medium">

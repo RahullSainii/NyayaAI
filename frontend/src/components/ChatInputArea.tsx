@@ -1,13 +1,11 @@
 import { RefObject, ChangeEvent, KeyboardEvent } from 'react';
-import { X, MicOff } from 'lucide-react';
+import { X, MicOff, Mic, Paperclip, Send, Image, FileText, Loader2 } from 'lucide-react';
 import { Attachment } from '../types';
+import { useChatStore } from '../store/useChatStore';
 
 export interface ChatInputAreaProps {
-  input: string;
-  setInput: (value: string) => void;
   handleKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   handleSend: () => void;
-  isLoading: boolean;
   attachments: Attachment[];
   handleAttachClick: () => void;
   handleFilesSelected: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -19,12 +17,12 @@ export interface ChatInputAreaProps {
   fileInputRef: RefObject<HTMLInputElement>;
 }
 
+/** Character count threshold to show the counter */
+const CHAR_COUNT_THRESHOLD = 200;
+
 export default function ChatInputArea({
-  input,
-  setInput,
   handleKeyDown,
   handleSend,
-  isLoading,
   attachments,
   handleAttachClick,
   handleFilesSelected,
@@ -35,37 +33,48 @@ export default function ChatInputArea({
   textareaRef,
   fileInputRef,
 }: ChatInputAreaProps) {
+  const { input, setInput, isLoading } = useChatStore();
+
+  const canSend =
+    (input.trim() || attachments.some((a) => a.content || a.imageData)) &&
+    !isLoading &&
+    !attachments.some((a) => a.loading);
+
   return (
-    <div className="w-full p-4 md:p-6 bg-[#020617]/95 backdrop-blur-sm border-t border-glass-border flex justify-center shrink-0 z-20">
+    <div className="z-20 flex w-full shrink-0 justify-center border-t border-glass-border bg-background/95 p-4 backdrop-blur-sm md:p-6">
       <div className="w-full max-w-[800px]">
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
+          <div className="mb-2 flex flex-wrap gap-2">
             {attachments.map((a) => (
               <div
                 key={a.id}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs ${
                   a.error
-                    ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
                     : a.loading
-                      ? 'bg-slate-800/60 border-glass-border text-on-surface-variant/70'
-                      : 'bg-slate-800 border-glass-border text-on-surface-variant'
+                      ? 'border-glass-border bg-slate-800/60 text-on-surface-variant/70'
+                      : 'border-glass-border bg-slate-800 text-on-surface-variant'
                 }`}
               >
                 {a.isImage && a.dataUrl ? (
-                  <img src={a.dataUrl} alt="" className="w-6 h-6 rounded object-cover" />
+                  <img src={a.dataUrl} alt="" className="h-6 w-6 rounded object-cover" />
+                ) : a.loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : a.error ? (
+                  <FileText className="h-4 w-4 text-red-400" />
+                ) : a.isImage ? (
+                  <Image className="h-4 w-4" />
                 ) : (
-                  <span className={`material-symbols-outlined text-sm ${a.loading ? 'animate-spin' : ''}`}>
-                    {a.loading ? 'progress_activity' : a.error ? 'error' : a.isImage ? 'image' : 'description'}
-                  </span>
+                  <FileText className="h-4 w-4" />
                 )}
-                <span className="truncate max-w-[160px]">{a.name}</span>
+                <span className="max-w-[160px] truncate">{a.name}</span>
                 {a.loading && <span className="text-on-surface-variant/60">processing…</span>}
                 {a.truncated && <span className="text-on-surface-variant/60">(truncated)</span>}
-                {a.error && <span className="truncate max-w-[220px]">— {a.error}</span>}
+                {a.error && <span className="max-w-[220px] truncate">— {a.error}</span>}
                 {!a.loading && (
                   <button
                     onClick={() => removeAttachment(a.id)}
-                    className="hover:text-on-surface transition-colors"
+                    className="transition-colors hover:text-on-surface"
                     aria-label={`Remove ${a.name}`}
                   >
                     <X size={14} />
@@ -75,8 +84,9 @@ export default function ChatInputArea({
             ))}
           </div>
         )}
-        <div className="glass-panel rounded-xl p-2 flex items-end gap-2 shadow-2xl relative overflow-hidden group focus-within:border-secondary/50 transition-colors">
-          <div className="absolute inset-0 bg-secondary/5 blur-xl pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity"></div>
+
+        <div className="relative flex items-end gap-2 overflow-hidden rounded-xl p-2 shadow-2xl transition-colors glass-panel group focus-within:border-secondary/50">
+          <div className="pointer-events-none absolute inset-0 bg-secondary/5 opacity-0 blur-xl transition-opacity group-focus-within:opacity-100" />
 
           <input
             ref={fileInputRef}
@@ -85,16 +95,18 @@ export default function ChatInputArea({
             accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.rtf,.html,.htm,.xml,.yaml,.yml,text/*,image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
             className="hidden"
             onChange={handleFilesSelected}
+            aria-hidden="true"
           />
+
           <button
             type="button"
             onClick={handleAttachClick}
             disabled={isLoading}
-            title="Attach a text document"
-            aria-label="Attach a text document"
-            className="p-3 text-on-surface-variant hover:text-secondary transition-colors shrink-0 disabled:opacity-50"
+            title="Attach a file"
+            aria-label="Attach a file"
+            className="shrink-0 p-3 text-on-surface-variant transition-colors hover:text-secondary disabled:opacity-50"
           >
-            <span className="material-symbols-outlined">attach_file</span>
+            <Paperclip className="h-5 w-5" />
           </button>
 
           <textarea
@@ -102,43 +114,45 @@ export default function ChatInputArea({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full bg-transparent border-none focus:ring-0 text-on-surface placeholder-on-surface-variant resize-none max-h-[150px] min-h-[44px] py-3 text-sm focus:outline-none z-10 relative"
+            className="relative z-10 w-full min-h-[44px] max-h-[150px] resize-none border-none bg-transparent py-3 text-sm text-on-surface placeholder-on-surface-variant focus:outline-none focus:ring-0"
             placeholder="Draft a consultation query or cite a provision..."
+            aria-label="Chat message input"
             rows={1}
           />
 
-          <div className="flex gap-1 shrink-0 pb-1 pr-1 z-10 relative items-center">
-            {input.length > 200 && (
-              <span className="text-xs text-on-surface-variant mr-2">
-                {input.length}
-              </span>
+          <div className="relative z-10 flex shrink-0 items-center gap-1 pb-1 pr-1">
+            {input.length > CHAR_COUNT_THRESHOLD && (
+              <span className="mr-2 text-xs text-on-surface-variant">{input.length}</span>
             )}
             {!recordingNotSupported && (
               <button
                 onClick={toggleRecording}
                 disabled={isLoading}
-                className={`p-2 transition-colors rounded-lg ${
+                className={`rounded-lg p-2 transition-colors ${
                   isRecording
-                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                    : 'text-on-surface-variant hover:text-secondary hover:bg-white/5'
+                    ? 'border border-red-500/30 bg-red-500/20 text-red-400'
+                    : 'text-on-surface-variant hover:bg-white/5 hover:text-secondary'
                 }`}
                 aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
               >
-                {isRecording ? <MicOff size={18} /> : <span className="material-symbols-outlined">mic</span>}
+                {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
             )}
             <button
               onClick={handleSend}
-              disabled={(!input.trim() && attachments.filter((a) => a.content || a.imageData).length === 0) || isLoading || attachments.some((a) => a.loading)}
-              className="p-2 bg-secondary text-on-secondary rounded-lg hover:bg-secondary-container transition-colors shadow-lg disabled:opacity-50 disabled:bg-surface-variant disabled:text-on-surface-variant"
+              disabled={!canSend}
+              className="rounded-lg bg-secondary p-2 text-on-secondary shadow-lg transition-colors hover:bg-secondary-container disabled:bg-surface-variant disabled:text-on-surface-variant disabled:opacity-50"
               aria-label="Send message"
             >
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
+              <Send className="h-5 w-5" />
             </button>
           </div>
         </div>
-        <div className="text-center mt-3">
-          <span className="font-label-caps text-[10px] text-on-surface-variant/50">NyayaAI can make mistakes. Verify critical legal information.</span>
+
+        <div className="mt-3 text-center">
+          <span className="text-[10px] text-on-surface-variant/50 font-label-caps">
+            NyayaAI can make mistakes. Verify critical legal information.
+          </span>
         </div>
       </div>
     </div>

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, ReactNode } from 'react';
+import React, { useEffect, useRef, useState, useMemo, ReactNode, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, Copy, Check, ThumbsUp, ThumbsDown,
   Share2, RefreshCw, Volume2, VolumeX, GitBranch,
-  MessageSquare, Globe, ExternalLink,
+  MessageSquare, Globe, ExternalLink, Image as ImageIcon
 } from 'lucide-react';
+import ReactMarkdown, { Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import logo from '../assets/nyaya.jpeg';
 import { ChatMessage, ChatSource } from '../types';
 
@@ -35,147 +38,26 @@ const formatSourceLabel = (source: string | ChatSource): string => {
   return `${lawType} Section ${section}${page}`;
 };
 
-const SOURCE_BADGES: Record<string, { icon: string; label: string; cls: string }> = {
-  web: { icon: 'public', label: 'Web', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/30' },
-  document: { icon: 'description', label: 'Document', cls: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' },
-  image: { icon: 'image', label: 'Image', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
+const SOURCE_BADGES: Record<string, { icon: React.ElementType; label: string; cls: string }> = {
+  web: { icon: Globe, label: 'Web', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/30' },
+  document: { icon: FileText, label: 'Document', cls: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' },
+  image: { icon: ImageIcon, label: 'Image', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
 };
 
 function SourceBadge({ sourceType }: { sourceType?: string }) {
   if (!sourceType) return null;
   const badge = SOURCE_BADGES[sourceType];
   if (!badge) return null;
+  const Icon = badge.icon;
   return (
     <span
       title={`Answer based on: ${badge.label}`}
       className={`flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full border ${badge.cls}`}
     >
-      <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>{badge.icon}</span>
+      <Icon className="w-3 h-3" />
       {badge.label}
     </span>
   );
-}
-
-function formatInline(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/);
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-semibold text-on-surface">{part.slice(2, -2)}</strong>;
-    }
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={i} className="bg-slate-800 text-secondary px-1.5 py-0.5 rounded text-xs font-mono">{part.slice(1, -1)}</code>;
-    }
-    return part;
-  });
-}
-
-const splitTableRow = (line: string): string[] => {
-  let l = line.trim();
-  if (l.startsWith('|')) l = l.slice(1);
-  if (l.endsWith('|')) l = l.slice(0, -1);
-  return l.split('|').map((c) => c.trim());
-};
-
-const isTableRow = (line: string): boolean => /\|/.test(line);
-const isTableSeparator = (line: string): boolean =>
-  /^\s*\|?[\s:|-]*-{2,}[\s:|-]*\|?\s*$/.test(line) && line.includes('-');
-
-function renderMarkdown(text?: string): ReactNode {
-  if (!text) return null;
-  const lines = text.split('\n');
-  const elements: ReactNode[] = [];
-  let listItems: ReactNode[] = [];
-  let listType: 'ol' | 'ul' | null = null;
-
-  const flushList = () => {
-    if (listItems.length > 0) {
-      const Tag = listType === 'ol' ? 'ol' : 'ul';
-      elements.push(<Tag key={`l-${elements.length}`} className={listType === 'ol' ? 'list-decimal pl-5 space-y-1.5 my-3 marker:text-secondary marker:font-semibold text-on-surface-variant' : 'list-disc pl-5 space-y-1.5 my-3 marker:text-secondary text-on-surface-variant'}>{listItems}</Tag>);
-      listItems = [];
-      listType = null;
-    }
-  };
-
-  const headingClass: Record<number, string> = {
-    1: 'text-lg font-bold text-on-surface mt-4 mb-2',
-    2: 'text-base font-bold text-on-surface mt-3 mb-2',
-    3: 'text-[13px] font-semibold text-secondary uppercase tracking-wide mt-3 mb-1.5',
-    4: 'text-sm font-semibold text-on-surface mt-2 mb-1',
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // --- Table block: header row followed by a |---|---| separator ---
-    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      flushList();
-      const headers = splitTableRow(line);
-      const rows: string[][] = [];
-      let j = i + 2;
-      while (j < lines.length && isTableRow(lines[j]) && !isTableSeparator(lines[j])) {
-        rows.push(splitTableRow(lines[j]));
-        j++;
-      }
-      elements.push(
-        <div key={`t-${i}`} className="my-3 overflow-x-auto rounded-lg border border-glass-border">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-800">
-                {headers.map((h, hi) => (
-                  <th key={hi} className="text-left font-semibold text-secondary px-3 py-2 border-b border-glass-border">
-                    {formatInline(h)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, ri) => (
-                <tr key={ri} className="border-b border-glass-border/40 last:border-0">
-                  {r.map((c, ci) => (
-                    <td key={ci} className="px-3 py-2 text-on-surface align-top">{formatInline(c)}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-      i = j - 1;
-      continue;
-    }
-
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-    const bulletMatch = line.match(/^\s*[-*]\s+(.+)/);
-    const numberedMatch = line.match(/^\s*\d+\.\s+(.+)/);
-
-    if (headingMatch) {
-      flushList();
-      const level = Math.min(headingMatch[1].length, 4);
-      const Tag = `h${Math.min(headingMatch[1].length, 6)}` as keyof JSX.IntrinsicElements;
-      elements.push(
-        <Tag key={`h-${i}`} className={headingClass[level] || headingClass[4]}>
-          {formatInline(headingMatch[2])}
-        </Tag>
-      );
-    } else if (bulletMatch) {
-      if (listType !== 'ul') flushList();
-      listType = 'ul';
-      listItems.push(<li key={i}>{formatInline(bulletMatch[1])}</li>);
-    } else if (numberedMatch) {
-      if (listType !== 'ol') flushList();
-      listType = 'ol';
-      listItems.push(<li key={i}>{formatInline(numberedMatch[1])}</li>);
-    } else {
-      flushList();
-      if (line.trim() === '') {
-        elements.push(<div key={i} className="h-2" />);
-      } else {
-        elements.push(<p key={i} className="mb-1.5 text-on-surface-variant leading-[1.65]">{formatInline(line)}</p>);
-      }
-    }
-  }
-  flushList();
-  return elements;
 }
 
 /* Strip markdown so copy / share / read-aloud get clean, natural text */
@@ -243,16 +125,11 @@ function TextSelectionToolbar({ onAskAbout }: { onAskAbout?: (text: string) => v
     if (!selection) return;
     try {
       await navigator.clipboard.writeText(selection);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = selection;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      setCopiedSel(true);
+      setTimeout(() => setCopiedSel(false), 1500);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
     }
-    setCopiedSel(true);
-    setTimeout(() => setCopiedSel(false), 1500);
   };
 
   const handleAsk = () => {
@@ -364,21 +241,16 @@ function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps
     }
   }, []);
 
-  const plainText = toPlainText(message.content);
+  const plainText = useMemo(() => toPlainText(message.content), [message.content]);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(plainText);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = plainText;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleShare = async () => {
@@ -505,7 +377,44 @@ export interface ChatBubbleProps {
   onAskAbout?: (text: string) => void;
 }
 
-export default function ChatBubble({
+const MarkdownComponents: Components = {
+  h1: ({node, ...props}: any) => <h1 className="text-lg font-bold text-on-surface mt-4 mb-2" {...props} />,
+  h2: ({node, ...props}: any) => <h2 className="text-base font-bold text-on-surface mt-3 mb-2" {...props} />,
+  h3: ({node, ...props}: any) => <h3 className="text-[13px] font-semibold text-secondary uppercase tracking-wide mt-3 mb-1.5" {...props} />,
+  h4: ({node, ...props}: any) => <h4 className="text-sm font-semibold text-on-surface mt-2 mb-1" {...props} />,
+  h5: ({node, ...props}: any) => <h5 className="text-sm font-semibold text-on-surface mt-2 mb-1" {...props} />,
+  h6: ({node, ...props}: any) => <h6 className="text-sm font-semibold text-on-surface mt-2 mb-1" {...props} />,
+  p: ({node, ...props}: any) => <p className="mb-1.5 text-on-surface-variant leading-[1.65]" {...props} />,
+  ul: ({node, ...props}: any) => <ul className="list-disc pl-5 space-y-1.5 my-3 marker:text-secondary text-on-surface-variant" {...props} />,
+  ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 space-y-1.5 my-3 marker:text-secondary marker:font-semibold text-on-surface-variant" {...props} />,
+  li: ({node, ...props}: any) => <li {...props} />,
+  strong: ({node, ...props}: any) => <strong className="font-semibold text-on-surface" {...props} />,
+  em: ({node, ...props}: any) => <em className="italic" {...props} />,
+  code: ({node, className, children, ...props}: any) => {
+    const isInline = !String(children).includes('\n') && !className;
+    return isInline ? (
+      <code className="bg-slate-800 text-secondary px-1.5 py-0.5 rounded text-xs font-mono" {...props}>{children}</code>
+    ) : (
+      <code className={`block bg-slate-800 p-3 rounded-lg overflow-x-auto text-sm my-3 font-mono text-secondary ${className || ''}`} {...props}>
+        {children}
+      </code>
+    );
+  },
+  pre: ({node, ...props}: any) => <pre className="my-3 overflow-x-auto rounded-lg" {...props} />,
+  table: ({node, ...props}: any) => (
+    <div className="my-3 overflow-x-auto rounded-lg border border-glass-border">
+      <table className="w-full text-xs border-collapse" {...props} />
+    </div>
+  ),
+  thead: ({node, ...props}: any) => <thead className="bg-slate-800" {...props} />,
+  th: ({node, ...props}: any) => <th className="text-left font-semibold text-secondary px-3 py-2 border-b border-glass-border" {...props} />,
+  tbody: ({node, ...props}: any) => <tbody {...props} />,
+  tr: ({node, ...props}: any) => <tr className="border-b border-glass-border/40 last:border-0" {...props} />,
+  td: ({node, ...props}: any) => <td className="px-3 py-2 text-on-surface align-top" {...props} />,
+  a: ({node, ...props}: any) => <a className="text-sky-400 underline hover:text-sky-300" target="_blank" rel="noopener noreferrer" {...props} />
+};
+
+const ChatBubble = memo(function ChatBubble({
   message,
   isStreaming = false,
   onRegenerate,
@@ -537,7 +446,13 @@ export default function ChatBubble({
       </div>
       <div className="glass-panel rounded-lg p-6 border-l-4 border-l-secondary ai-think-glow text-on-surface-variant">
         <div className="text-sm chat-bubble-content">
-          {renderMarkdown(message.content)}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeSanitize]}
+            components={MarkdownComponents}
+          >
+            {message.content}
+          </ReactMarkdown>
           {!isStreaming && onAskAbout && (
             <TextSelectionToolbar onAskAbout={onAskAbout} />
           )}
@@ -611,4 +526,6 @@ export default function ChatBubble({
       </div>
     </div>
   );
-}
+});
+
+export default ChatBubble;

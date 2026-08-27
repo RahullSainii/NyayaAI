@@ -952,6 +952,14 @@ img {
   animation: borderGlow 3s infinite ease-in-out;
 }
 
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee-track {
+  animation: marquee 30s linear infinite;
+}
+
 /* Responsive Overrides */
 @media (min-width: 1024px) {
   .timeline-line {
@@ -994,4 +1002,36 @@ img {
   .auth-brand-name {
     font-size: 1.1rem;
   }
+}
+
+/* Accessibility: respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .typing-dot,
+  .particle-dot,
+  .marquee-track,
+  .auth-spinner {
+    animation: none !important;
+  }
+}
+
+/* Screen-reader only text */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }

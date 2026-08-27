@@ -4,7 +4,7 @@ import { Search, Scale, ArrowRight, Loader2, AlertCircle, RefreshCw } from 'luci
 import Navbar from '../components/Navbar';
 import SectionCard from '../components/SectionCard';
 import MappingDrawer from '../components/MappingDrawer';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 import type { LegalSection, ApiMappingResult } from '../types';
 
 const SAMPLE_SECTIONS: LegalSection[] = [
@@ -76,7 +76,7 @@ const SECTION_DETAILS: Record<string, LegalSection> = Object.fromEntries(
 );
 
 const normalizeSectionInput = (value: string): string =>
-  value.trim().toUpperCase().replace(/^SECTION\s+/i, '').replace(/^SEC\s+/i, '');
+  value.trim().toUpperCase().replace(/^(?:IPC|BNS|SECTION|SEC|#|\s)+/i, '');
 
 const buildSectionFromApi = (result: ApiMappingResult): LegalSection => {
   const fallback = SECTION_DETAILS[result.ipc] || {};
@@ -84,7 +84,7 @@ const buildSectionFromApi = (result: ApiMappingResult): LegalSection => {
   const mappingFound = bnsSection !== 'Not Found';
 
   return {
-    id: Date.now(),
+    id: crypto.randomUUID(),
     ipcSection: result.ipc,
     ipcTitle: fallback.ipcTitle || `IPC Section ${result.ipc}`,
     bnsSection,
@@ -109,7 +109,6 @@ function Mapping() {
   const [resultSection, setResultSection] = useState<LegalSection | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [isFocused, setIsFocused] = useState<boolean>(false);
 
   const runLookup = async (rawValue: string) => {
     const ipcSection = normalizeSectionInput(rawValue);
@@ -124,9 +123,7 @@ function Mapping() {
     setError('');
 
     try {
-      const response = await fetch(
-        apiUrl(`/map?ipc=${encodeURIComponent(ipcSection)}`),
-      );
+      const response = await apiFetch(`/map?ipc=${encodeURIComponent(ipcSection)}`);
 
       if (!response.ok) {
         throw new Error(`Mapping request failed with status ${response.status}`);
@@ -183,7 +180,7 @@ function Mapping() {
         >
           <div className="flex flex-col md:flex-row gap-4">
             <div 
-              className={`relative flex-1 bg-surface-glass-strong rounded-xl border transition-all duration-300 ${isFocused ? 'border-gold-glow shadow-[0_0_15px_rgba(255,215,0,0.15)]' : 'border-line'}`}
+              className="relative flex-1 bg-surface-glass-strong rounded-xl border border-line transition-all duration-300 focus-within:border-gold-glow focus-within:shadow-[0_0_15px_rgba(255,215,0,0.15)]"
             >
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-fg-muted" />
               <div className="relative">
@@ -192,18 +189,12 @@ function Mapping() {
                   id="search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
                   className="w-full bg-transparent pl-12 pr-4 pt-5 pb-2 text-fg focus:outline-none peer"
                   placeholder=" "
                 />
                 <label 
                   htmlFor="search"
-                  className={`absolute left-12 text-fg-muted transition-all duration-200 pointer-events-none ${
-                    search || isFocused 
-                      ? 'top-1.5 text-xs'
-                      : 'top-1/2 -translate-y-1/2 text-base'
-                  }`}
+                  className="absolute left-12 top-1.5 -translate-y-0 text-xs text-fg-muted transition-all duration-200 pointer-events-none peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-base peer-focus:top-1.5 peer-focus:-translate-y-0 peer-focus:text-xs"
                 >
                   Enter IPC section (e.g., 302, 498A)
                 </label>

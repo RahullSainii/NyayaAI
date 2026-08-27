@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, LogOut, User, Menu, X } from 'lucide-react';
@@ -13,10 +13,11 @@ interface NavLinkItem {
 
 const navLinks: NavLinkItem[] = [
   { label: 'IPC to BNS', path: '/mapping' },
-  { label: 'Sections', path: '/mapping' },
   { label: 'Ask AI', path: '/chat' },
   { label: 'About', href: '#features' },
 ];
+
+const SCROLL_THRESHOLD = 20;
 
 export default function Navbar() {
   const location = useLocation();
@@ -24,12 +25,22 @@ export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
   const [scrolled, setScrolled] = useState<boolean>(false);
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
+  const rafRef = useRef<number>(0);
+
+  const handleScroll = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      setScrolled(window.scrollY > SCROLL_THRESHOLD);
+    });
+  }, []);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [handleScroll]);
 
   const handleLogout = () => {
     logout();

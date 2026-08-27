@@ -1,34 +1,62 @@
+/**
+ * User representation in authentication and profile contexts.
+ */
 export interface User {
   id?: string | number;
   email?: string;
   name?: string;
   role?: string;
   avatar?: string;
-  [key: string]: any;
 }
 
+/**
+ * Authentication response payload returned by login and token exchange endpoints.
+ */
 export interface AuthResponse {
   user: User;
   token: string;
   message?: string;
   detail?: string;
-  [key: string]: any;
 }
 
+/**
+ * Response payload returned by the registration endpoint.
+ */
+export interface RegisterResponse {
+  message: string;
+  user?: User;
+  token?: string;
+  detail?: string;
+}
+
+/**
+ * Generic message response payload returned by auth operations (e.g. password resets).
+ */
+export interface AuthMessageResponse {
+  message: string;
+  detail?: string;
+}
+
+/**
+ * Context value interface for the authentication provider.
+ */
 export interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (email: string, password: string) => Promise<any>;
+  login: (email: string, password: string) => Promise<AuthResponse>;
   googleLoginSuccess: (userData: User, tokenStr: string) => void;
-  loginWithGoogle: (accessToken: string) => Promise<any>;
-  register: (name: string, email: string, password: string) => Promise<any>;
-  forgotPassword: (email: string) => Promise<any>;
-  resetPassword: (resetToken: string, password: string) => Promise<any>;
+  loginWithGoogle: (accessToken: string) => Promise<AuthResponse>;
+  register: (name: string, email: string, password: string) => Promise<{ message: string; user?: User; token?: string }>;
+  forgotPassword: (email: string) => Promise<{ message: string }>;
+  resetPassword: (resetToken: string, password: string) => Promise<{ message: string }>;
   logout: () => void;
 }
 
+/**
+ * Legal section definition mapping IPC to BNS with details.
+ */
 export interface LegalSection {
   id: number | string;
   ipcSection: string;
@@ -39,16 +67,20 @@ export interface LegalSection {
   cognizable: boolean;
   bailable: boolean;
   description: string;
-  [key: string]: any;
 }
 
+/**
+ * API response structure for IPC -> BNS mapping lookup.
+ */
 export interface ApiMappingResult {
   ipc: string;
   bns?: string;
   description?: string;
-  [key: string]: any;
 }
 
+/**
+ * Source citation information associated with an AI response.
+ */
 export interface ChatSource {
   title?: string;
   section?: string;
@@ -59,20 +91,34 @@ export interface ChatSource {
   law_type?: string;
   page_number?: number | string;
   text_snippet?: string;
-  [key: string]: any;
 }
 
+/**
+ * Allowed source types for AI answer grounding.
+ */
+export type SourceType = 'web' | 'document' | 'image' | 'kb';
+
+/**
+ * Allowed roles for chat messages in conversation history.
+ */
+export type ChatRole = 'user' | 'assistant' | 'ai' | 'system';
+
+/**
+ * Individual message representation in a chat conversation.
+ */
 export interface ChatMessage {
   id?: string | number;
-  role: 'user' | 'assistant' | 'ai' | 'system' | string;
+  role: ChatRole;
   content: string;
   welcome?: boolean;
   sources?: Array<string | ChatSource>;
-  sourceType?: string;
+  sourceType?: SourceType;
   confidence?: number;
-  [key: string]: any;
 }
 
+/**
+ * Chat conversation session metadata.
+ */
 export interface ChatSession {
   id: number | string;
   title: string;
@@ -80,9 +126,11 @@ export interface ChatSession {
   pinned?: boolean;
   archived?: boolean;
   timestamp?: string | number | Date;
-  [key: string]: any;
 }
 
+/**
+ * File or image attachment associated with chat inputs.
+ */
 export interface Attachment {
   id: number | string;
   name: string;
@@ -94,11 +142,11 @@ export interface Attachment {
   content?: string;
   truncated?: boolean;
   error?: string | null;
-  [key: string]: any;
 }
 
-export type ChatAttachment = Attachment;
-
+/**
+ * Context menu display state for chat session options.
+ */
 export interface ChatMenuState {
   id: number | string;
   top: number;
