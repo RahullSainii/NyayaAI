@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import logo from '../assets/nyaya.jpeg';
 import AetherHero from '../components/ui/aether-hero';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID) as string | undefined;
 
 const formVariants: Variants = {
   initial: { opacity: 0, x: 30, scale: 0.97 },
@@ -113,7 +113,7 @@ function GoogleUnavailableButton({ disabled, onError }: GoogleUnavailableButtonP
   return (
     <button
       type="button"
-      onClick={() => onError('Google sign-in is not configured yet. Please use email and password, or set VITE_GOOGLE_CLIENT_ID in Render.')}
+      onClick={() => onError('Google sign-in is not configured yet. Please use email and password, or set VITE_GOOGLE_CLIENT_ID in Render and redeploy.')}
       disabled={disabled}
       className="mt-4 w-full flex items-center justify-center gap-3 bg-surface-2 hover:bg-surface-3 border border-line hover:border-gold/30 text-text-primary font-medium py-2.5 px-4 rounded-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed group"
     >
@@ -518,6 +518,4 @@ export default function AuthPage({ mode = 'login' }: AuthPageProps) {
     </div>
   );
 }
-
-
 

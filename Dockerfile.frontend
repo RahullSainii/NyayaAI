@@ -5,7 +5,19 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
-RUN npm run build
+
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_GOOGLE_OAUTH_CLIENT_ID
+ARG GOOGLE_CLIENT_ID
+ARG VITE_API_BASE_URL
+ARG VITE_SENTRY_DSN
+
+# Vite reads VITE_* values only while building the static bundle. Render passes
+# service env vars to Docker as build args, so expose them to npm run build here.
+RUN VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-${VITE_GOOGLE_OAUTH_CLIENT_ID:-$GOOGLE_CLIENT_ID}}" \
+    VITE_API_BASE_URL="$VITE_API_BASE_URL" \
+    VITE_SENTRY_DSN="$VITE_SENTRY_DSN" \
+    npm run build
 
 # ── Production stage: serve static files with nginx ──────────────────────
 FROM nginx:stable-alpine
@@ -22,3 +34,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -q --spider http://localhost:80/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
+
+

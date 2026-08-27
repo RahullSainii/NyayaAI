@@ -6,7 +6,7 @@ import './index.css';
 
 import * as Sentry from '@sentry/react';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
 
 // Initialize Sentry for error tracking
 Sentry.init({
