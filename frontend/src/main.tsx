@@ -25,11 +25,14 @@ Sentry.init({
 
 if (!GOOGLE_CLIENT_ID) {
   console.error(
-    '[NyayaAI] Missing VITE_GOOGLE_CLIENT_ID. Google sign-in will not work.\n' +
-    '  → Create frontend/.env (NOT the repo-root .env) with:\n' +
-    '      VITE_GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com\n' +
-    '  → Then restart the dev server or rebuild.'
+    '[NyayaAI] VITE_GOOGLE_CLIENT_ID is empty. Google sign-in will not work.\n' +
+    '  Sources checked:\n' +
+    `    window.__NYAYA_CONFIG__.VITE_GOOGLE_CLIENT_ID = "${window.__NYAYA_CONFIG__?.VITE_GOOGLE_CLIENT_ID || '(missing)'}"\n` +
+    `    import.meta.env.VITE_GOOGLE_CLIENT_ID       = "${import.meta.env.VITE_GOOGLE_CLIENT_ID || '(missing)'}"\n` +
+    '  Fix: set VITE_GOOGLE_CLIENT_ID on the Render frontend service and redeploy.'
   );
+} else {
+  console.log(`[NyayaAI] GOOGLE_CLIENT_ID loaded (${GOOGLE_CLIENT_ID.substring(0, 12)}...)`);
 }
 
 const rootElement = document.getElementById('root');
