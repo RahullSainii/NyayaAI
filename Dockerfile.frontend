@@ -6,17 +6,14 @@ COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
 
-ARG VITE_GOOGLE_CLIENT_ID
-ARG VITE_GOOGLE_OAUTH_CLIENT_ID
-ARG GOOGLE_CLIENT_ID
-ARG VITE_API_BASE_URL
-ARG VITE_SENTRY_DSN
-
-# Vite reads VITE_* values only while building the static bundle. Render passes
-# service env vars to Docker as build args, so expose them to npm run build here.
-RUN VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-${VITE_GOOGLE_OAUTH_CLIENT_ID:-$GOOGLE_CLIENT_ID}}" \
-    VITE_API_BASE_URL="$VITE_API_BASE_URL" \
-    VITE_SENTRY_DSN="$VITE_SENTRY_DSN" \
+# NOTE: Do NOT declare ARG with the same name as VITE_ env vars here.
+# Render sets env vars as regular environment variables during build, NOT as
+# Docker --build-arg. Declaring ARG VITE_GOOGLE_CLIENT_ID would shadow the
+# real env var with an empty value (since no --build-arg is passed), and the
+# RUN command below would write an empty string into the Vite bundle.
+RUN VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-${VITE_GOOGLE_OAUTH_CLIENT_ID:-${GOOGLE_CLIENT_ID:-}}}" \
+    VITE_API_BASE_URL="${VITE_API_BASE_URL:-}" \
+    VITE_SENTRY_DSN="${VITE_SENTRY_DSN:-}" \
     npm run build
 
 # ── Production stage: serve static files with nginx ──────────────────────
