@@ -1,95 +1,130 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { Mail, Lock, User, ArrowRight, Eye, EyeOff, CheckCircle, AlertCircle, Loader2, KeyRound, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Eye, EyeOff } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
-import logo from '../assets/nyaya.jpeg';
-import AetherHero from '../components/ui/aether-hero';
+import { BrandFullLogo, BrandLockup } from '../components/ui/BrandMark';
+import { AuthBackdrop } from '../components/ui/Backdrop';
+import { Notice } from '../components/ui/Feedback';
+import { buttonClass } from '../components/ui/Button';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { BNS_COMMENCEMENT, INDEX_STATS } from '../lib/sections';
 import { GOOGLE_CLIENT_ID } from '../lib/runtimeConfig';
 
+type Mode = 'login' | 'register' | 'forgot-password' | 'reset-password';
 
-const formVariants: Variants = {
-  initial: { opacity: 0, x: 30, scale: 0.97 },
-  animate: { opacity: 1, x: 0, scale: 1, transition: { duration: 0.4, ease: 'easeOut' } },
-  exit: { opacity: 0, x: -30, scale: 0.97, transition: { duration: 0.25, ease: 'easeIn' } },
+const COPY: Record<Mode, { title: string; subtitle: string; submit: string }> = {
+  login: {
+    title: 'Sign in',
+    subtitle: 'Pick up where you left off.',
+    submit: 'Sign in',
+  },
+  register: {
+    title: 'Create an account',
+    subtitle: 'Your conversations stay on your account, so you can come back to them.',
+    submit: 'Create account',
+  },
+  'forgot-password': {
+    title: 'Reset your password',
+    subtitle: 'Enter the email you signed up with and we will send a reset link.',
+    submit: 'Send reset link',
+  },
+  'reset-password': {
+    title: 'Choose a new password',
+    subtitle: 'Pick something you have not used elsewhere.',
+    submit: 'Save password',
+  },
 };
 
+const MIN_PASSWORD_LENGTH = 6;
+
+/** Strength meter. Advisory only — the server enforces the actual minimum. */
 function PasswordStrength({ password }: { password: string }) {
   const strength = useMemo(() => {
-    if (!password) return { level: 0, label: '', color: '' };
+    if (!password) return { level: 0, label: '', bar: '', text: '' };
 
     let score = 0;
-    if (password.length >= 6) score++;
-    if (password.length >= 10) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
+    if (password.length >= MIN_PASSWORD_LENGTH) score += 1;
+    if (password.length >= 12) score += 1;
+    if (/[A-Z]/.test(password)) score += 1;
+    if (/\d/.test(password)) score += 1;
+    if (/[^A-Za-z0-9]/.test(password)) score += 1;
 
-    if (score <= 1) return { level: 1, label: 'Weak', color: 'bg-red-500' };
-    if (score <= 3) return { level: 2, label: 'Medium', color: 'bg-yellow-500' };
-    return { level: 3, label: 'Strong', color: 'bg-emerald-500' };
+    if (score <= 1) return { level: 1, label: 'Weak', bar: 'bg-danger', text: 'text-danger' };
+    if (score <= 3) return { level: 2, label: 'Fair', bar: 'bg-caution', text: 'text-caution' };
+    return { level: 3, label: 'Strong', bar: 'bg-affirm', text: 'text-affirm' };
   }, [password]);
-  
+
   if (!password) return null;
-  
+
   return (
-    <div className="mt-2 w-full">
-      <div className="flex gap-1">
-        {[1,2,3].map(i => (
-          <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-500 ${i <= strength.level ? strength.color : 'bg-surface-2'}`} />
+    <div className="mt-2">
+      <div className="flex gap-1" aria-hidden="true">
+        {[1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={`h-0.5 flex-1 rounded-full transition-colors duration-200 ${
+              i <= strength.level ? strength.bar : 'bg-line-2'
+            }`}
+          />
         ))}
       </div>
-      <p className={`text-xs mt-1 transition-colors duration-300 ${strength.level === 1 ? 'text-red-400' : strength.level === 2 ? 'text-yellow-400' : 'text-emerald-400'}`}>
-        {strength.label}
+      <p className={`t-xs mt-1.5 ${strength.text}`}>
+        {strength.label} password
+        <span className="sr-only"> — at least {MIN_PASSWORD_LENGTH} characters required</span>
       </p>
     </div>
   );
 }
 
-export interface AuthPageProps {
-  mode?: 'login' | 'register' | 'forgot-password' | 'reset-password';
-}
-
 function GoogleIcon() {
   return (
-    <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
     </svg>
   );
 }
-interface GoogleSignInButtonProps {
-  disabled: boolean;
-  onStart: () => void;
-  onSuccess: () => void;
-  onError: (message: string) => void;
-  loginWithGoogle: (accessToken: string) => Promise<unknown>;
-}
 
-function GoogleSignInButton({
+function GoogleButton({
   disabled,
   onStart,
   onSuccess,
   onError,
   loginWithGoogle,
-}: GoogleSignInButtonProps) {
+}: {
+  disabled: boolean;
+  onStart: () => void;
+  onSuccess: () => void;
+  onError: (message: string) => void;
+  loginWithGoogle: (accessToken: string) => Promise<unknown>;
+}) {
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       try {
         onStart();
-        // Exchange the Google access token for our backend-issued JWT so that
-        // authenticated endpoints (like /chat) accept the session.
         await loginWithGoogle(tokenResponse.access_token);
         onSuccess();
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Google sign-in failed';
-        onError(msg);
+        onError(err instanceof Error ? err.message : 'Google sign-in failed.');
       }
     },
-    onError: () => onError('Google sign-in was cancelled or failed'),
+    onError: () => onError('Google sign-in was cancelled.'),
   });
 
   return (
@@ -97,253 +132,203 @@ function GoogleSignInButton({
       type="button"
       onClick={() => googleLogin()}
       disabled={disabled}
-      className="mt-4 w-full flex items-center justify-center gap-3 bg-surface-2 hover:bg-surface-3 border border-line hover:border-gold/30 text-text-primary font-medium py-2.5 px-4 rounded-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed group"
+      className={buttonClass({ variant: 'secondary', className: 'w-full' })}
     >
       <GoogleIcon />
-      Google
+      Continue with Google
     </button>
   );
-}
-interface GoogleUnavailableButtonProps {
-  disabled: boolean;
-  onError: (message: string) => void;
 }
 
-function GoogleUnavailableButton({ disabled, onError }: GoogleUnavailableButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => onError('Google sign-in is not configured yet. Please set VITE_GOOGLE_CLIENT_ID on the Render frontend service, then restart or redeploy it.')}
-      disabled={disabled}
-      className="mt-4 w-full flex items-center justify-center gap-3 bg-surface-2 hover:bg-surface-3 border border-line hover:border-gold/30 text-text-primary font-medium py-2.5 px-4 rounded-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed group"
-    >
-      <GoogleIcon />
-      Google
-    </button>
-  );
+export interface AuthPageProps {
+  mode?: Mode;
 }
+
 export default function AuthPage({ mode = 'login' }: AuthPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { login, register, forgotPassword, resetPassword, isAuthenticated, loginWithGoogle } = useAuth();
+  const { login, register, forgotPassword, resetPassword, isAuthenticated, loginWithGoogle } =
+    useAuth();
+
+  /* Where to go once signed in: the page that sent us here, or the assistant. */
+  const redirectTo = (location.state as { from?: string } | null)?.from || '/chat';
 
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const copy = COPY[mode];
+  useDocumentTitle(`${copy.title} · NyayaAI`);
 
-  // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated && mode !== 'reset-password') {
-      navigate('/chat', { replace: true });
-    }
-  }, [isAuthenticated, navigate, mode]);
+    if (isAuthenticated && mode !== 'reset-password') navigate(redirectTo, { replace: true });
+  }, [isAuthenticated, navigate, mode, redirectTo]);
 
-  // Clear messages on mode change
   useEffect(() => {
     setError('');
     setSuccess('');
     setFormData({ name: '', email: '', password: '', confirmPassword: '' });
   }, [mode]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, [event.target.name]: event.target.value }));
     if (error) setError('');
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const needsConfirm = mode === 'register' || mode === 'reset-password';
+  const mismatch =
+    needsConfirm &&
+    formData.confirmPassword.length > 0 &&
+    formData.password !== formData.confirmPassword;
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
     setSuccess('');
     setIsLoading(true);
 
     try {
       if (mode === 'register') {
-        if (formData.password !== formData.confirmPassword) {
-          throw new Error('Passwords do not match');
-        }
-        if (formData.password.length < 6) {
-          throw new Error('Password must be at least 6 characters');
+        if (formData.password !== formData.confirmPassword) throw new Error('The passwords do not match.');
+        if (formData.password.length < MIN_PASSWORD_LENGTH) {
+          throw new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
         }
         const result = await register(formData.name, formData.email, formData.password);
         setSuccess(result.message);
         setTimeout(() => navigate('/login'), 2000);
       } else if (mode === 'login') {
         await login(formData.email, formData.password);
-        navigate('/chat', { replace: true });
+        navigate(redirectTo, { replace: true });
       } else if (mode === 'forgot-password') {
         const result = await forgotPassword(formData.email);
         setSuccess(result.message);
-      } else if (mode === 'reset-password') {
+      } else {
         const token = searchParams.get('token');
-        if (!token) throw new Error('Invalid reset link');
-        if (formData.password !== formData.confirmPassword) {
-          throw new Error('Passwords do not match');
-        }
+        if (!token) throw new Error('This reset link is not valid. Request a new one.');
+        if (formData.password !== formData.confirmPassword) throw new Error('The passwords do not match.');
         const result = await resetPassword(token, formData.password);
         setSuccess(result.message);
         setTimeout(() => navigate('/login'), 2500);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'An error occurred';
-      setError(msg);
+      setError(err instanceof Error ? err.message : 'Something went wrong. Try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getTitle = () => {
-    switch (mode) {
-      case 'register': return 'Create Account';
-      case 'forgot-password': return 'Reset Password';
-      case 'reset-password': return 'New Password';
-      default: return 'Welcome Back';
-    }
-  };
-
-  const getSubtitle = () => {
-    switch (mode) {
-      case 'register': return 'Join NyayaAI for AI-powered legal assistance';
-      case 'forgot-password': return "Enter your email and we'll send you a reset link";
-      case 'reset-password': return 'Choose a new secure password';
-      default: return 'Sign in to your NyayaAI account';
-    }
-  };
-
   return (
-    <div className="auth-container relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-navy">
-      {/* Aether shader background (same cinematic effect as the landing hero) */}
-      <div className="fixed inset-0 z-0 pointer-events-none" aria-hidden="true">
-        <AetherHero
-          height="100%"
-          overlayGradient="linear-gradient(180deg, rgba(6,9,16,0.88) 0%, rgba(6,9,16,0.66) 45%, rgba(6,9,16,0.88) 100%)"
-          ariaLabel="Aurora auth background"
-        >
-          <></>
-        </AetherHero>
-      </div>
+    <div className="relative isolate flex min-h-[100dvh] flex-col overflow-hidden bg-ink lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      {/* One shader behind both columns. `isolate` above makes this element's
+          stacking context the blend root for it. */}
+      <AuthBackdrop />
 
-      {/* Background aurora effects */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        <motion.div 
-          animate={{ y: [-40, 40, -40], x: [-30, 30, -30], scale: [1, 1.1, 1] }} 
-          transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }} 
-          className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] max-w-[600px] max-h-[600px] bg-gold/10 rounded-full blur-[100px] md:blur-[140px]" 
-        />
-        <motion.div 
-          animate={{ y: [40, -40, 40], x: [30, -30, 30], scale: [1.1, 1, 1.1] }} 
-          transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }} 
-          className="absolute top-[20%] right-[-10%] w-[45vw] h-[45vw] max-w-[500px] max-h-[500px] bg-muted-blue/15 rounded-full blur-[100px] md:blur-[130px]" 
-        />
-        <motion.div 
-          animate={{ y: [-20, 20, -20], x: [20, -20, 20], scale: [1, 1.05, 1] }} 
-          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }} 
-          className="absolute bottom-[-10%] left-[20%] w-[60vw] h-[60vw] max-w-[700px] max-h-[700px] bg-gold/5 rounded-full blur-[120px] md:blur-[160px]" 
-        />
-      </div>
-
-      {/* Large background logo watermark */}
-      <div className="auth-logo-watermark opacity-5 pointer-events-none absolute inset-0 flex items-center justify-center mix-blend-overlay" aria-hidden="true">
-        <img src={logo} alt="" className="w-[80vw] max-w-[800px] object-contain grayscale" />
-      </div>
-
-      {/* Auth card */}
-      <motion.div
-        className="auth-card relative z-10 w-full max-w-md mx-auto p-8 rounded-3xl surface-glass-strong border border-line shadow-2xl backdrop-blur-2xl"
-        initial={{ opacity: 0, y: 30, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-      >
-        {/* Animated glowing border */}
-        <div className="absolute inset-0 rounded-3xl border border-gold/30 animate-pulse pointer-events-none" />
-
-        {/* Logo and brand */}
-        <Link to="/" className="auth-brand flex flex-col items-center justify-center mb-8 gap-3 group">
-          <div className="auth-brand-logo w-14 h-14 rounded-2xl border border-gold/40 bg-white shadow-lg flex items-center justify-center overflow-hidden transition-all duration-300 group-hover:shadow-[0_0_20px_rgba(245,200,66,0.4)] group-hover:border-gold">
-            <img src={logo} alt="NyayaAI" className="w-full h-full object-contain" />
-          </div>
-          <div className="text-center">
-            <p className="auth-brand-name font-heading text-xl font-bold tracking-widest text-text-primary">NYAYA <span className="text-gold">AI</span></p>
-          </div>
+      {/* ------------------------------------------------------- Context panel */}
+      {/* No background of its own: an opaque panel here would hide the effect. */}
+      <aside className="relative hidden border-r border-line lg:flex lg:flex-col lg:justify-between lg:p-12">
+        <Link to="/" aria-label="NyayaAI home" className="relative w-fit">
+          <BrandFullLogo className="w-52" />
         </Link>
 
-        {/* Title */}
-        <div className="auth-header text-center mb-8">
-          <AnimatePresence mode="wait">
-            <motion.div key={mode} variants={formVariants} initial="initial" animate="animate" exit="exit">
-              <h1 className="auth-title text-2xl font-bold text-text-primary mb-2">{getTitle()}</h1>
-              <p className="auth-subtitle text-sm text-muted-blue">{getSubtitle()}</p>
-            </motion.div>
-          </AnimatePresence>
+        <div className="relative max-w-md">
+          <p className="eyebrow">Why an account</p>
+          <h2 className="t-h2 lum-heading mt-4">
+            Your conversations, kept where you left them.
+          </h2>
+          <p className="t-lead mt-4">
+            Questions about the Bharatiya Nyaya Sanhita rarely end in one exchange. An account keeps
+            each thread — and the provisions it cited — available when you come back to it.
+          </p>
+
+          <ul className="mt-10 flex gap-12">
+            <li>
+              <p className="t-numeral lum-metric text-2xl leading-none">{INDEX_STATS.indexed}</p>
+              <p className="t-sm mt-1.5 text-fg-subtle">IPC sections indexed</p>
+            </li>
+            <li>
+              <p className="t-numeral lum-metric text-2xl leading-none">
+                {INDEX_STATS.withEquivalent}
+              </p>
+              <p className="t-sm mt-1.5 text-fg-subtle">Mapped to the BNS</p>
+            </li>
+          </ul>
         </div>
 
-        {/* Messages */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              className="auth-message auth-message-error flex items-start gap-2 p-3 mb-6 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
-              initial={{ opacity: 0, y: -8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </motion.div>
-          )}
-          {success && (
-            <motion.div
-              className="auth-message auth-message-success flex items-start gap-2 p-3 mb-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm"
-              initial={{ opacity: 0, y: -8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: 'auto' }}
-              exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <CheckCircle className="h-5 w-5 shrink-0 mt-0.5" />
-              <span>{success}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <p className="t-xs relative text-fg-subtle">
+          The BNS replaced the Indian Penal Code on {BNS_COMMENCEMENT}. NyayaAI provides educational
+          information, not legal advice.
+        </p>
+      </aside>
 
-        {/* Form */}
-        <AnimatePresence mode="wait">
-          <motion.form
-            key={mode}
-            onSubmit={handleSubmit}
-            variants={formVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            className="auth-form flex flex-col gap-5"
-          >
-            {mode === 'register' && (
-              <div className="auth-input-group flex flex-col gap-1.5">
-                <label className="auth-label text-sm font-medium text-text-primary" htmlFor="auth-name">Full Name</label>
-                <div className="auth-input-wrapper relative flex items-center group">
-                  <User className="auth-input-icon absolute left-3.5 h-4 w-4 text-muted-blue group-focus-within:text-gold transition-colors" />
+      {/* --------------------------------------------------------------- Form */}
+      {/* Readability here comes from AuthBackdrop's veil, which thickens to
+          near-solid ink under this column, so no local background is needed. */}
+      <div className="relative flex flex-1 flex-col">
+        <div className="relative flex items-center justify-between px-5 pt-5 lg:hidden">
+          <BrandLockup to="/" />
+          <Link to="/" className="t-sm link-quiet inline-flex items-center gap-1.5">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            Home
+          </Link>
+        </div>
+
+        <div className="relative flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
+          <div className="w-full max-w-[25rem]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={mode}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+              >
+                <h1 className="t-h1 lum-heading">{copy.title}</h1>
+                <p className="t-body mt-2 text-fg-muted">{copy.subtitle}</p>
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="mt-6 flex flex-col gap-3" aria-live="polite">
+              {error && (
+                <Notice tone="error" icon={<AlertCircle className="h-4 w-4" aria-hidden="true" />}>
+                  {error}
+                </Notice>
+              )}
+              {success && (
+                <Notice tone="success" icon={<Check className="h-4 w-4" aria-hidden="true" />}>
+                  {success}
+                </Notice>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+              {mode === 'register' && (
+                <div className="field">
+                  <label className="field-label" htmlFor="auth-name">
+                    Full name
+                  </label>
                   <input
                     id="auth-name"
                     name="name"
                     type="text"
                     value={formData.name}
                     onChange={handleChange}
-                    placeholder="Enter your full name"
-                    className="auth-input w-full bg-surface-2 border border-line rounded-xl py-2.5 pl-10 pr-4 text-sm text-text-primary focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/50 transition-all placeholder-muted-blue/50"
+                    placeholder="Your name"
+                    className="input"
                     required
                     autoComplete="name"
                   />
                 </div>
-              </div>
-            )}
+              )}
 
-            {mode !== 'reset-password' && (
-              <div className="auth-input-group flex flex-col gap-1.5">
-                <label className="auth-label text-sm font-medium text-text-primary" htmlFor="auth-email">Email Address</label>
-                <div className="auth-input-wrapper relative flex items-center group">
-                  <Mail className="auth-input-icon absolute left-3.5 h-4 w-4 text-muted-blue group-focus-within:text-gold transition-colors" />
+              {mode !== 'reset-password' && (
+                <div className="field">
+                  <label className="field-label" htmlFor="auth-email">
+                    Email
+                  </label>
                   <input
                     id="auth-email"
                     name="email"
@@ -351,172 +336,190 @@ export default function AuthPage({ mode = 'login' }: AuthPageProps) {
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="you@example.com"
-                    className="auth-input w-full bg-surface-2 border border-line rounded-xl py-2.5 pl-10 pr-4 text-sm text-text-primary focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/50 transition-all placeholder-muted-blue/50"
+                    className="input"
                     required
                     autoComplete="email"
+                    autoFocus={mode === 'login'}
                   />
                 </div>
-              </div>
-            )}
+              )}
 
-            {(mode === 'login' || mode === 'register' || mode === 'reset-password') && (
-              <div className="auth-input-group flex flex-col gap-1.5">
-                <div className="auth-label-row flex justify-between items-center">
-                  <label className="auth-label text-sm font-medium text-text-primary" htmlFor="auth-password">
-                    {mode === 'reset-password' ? 'New Password' : 'Password'}
+              {mode !== 'forgot-password' && (
+                <div className="field">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <label className="field-label" htmlFor="auth-password">
+                      {mode === 'reset-password' ? 'New password' : 'Password'}
+                    </label>
+                    {mode === 'login' && (
+                      <Link to="/forgot-password" className="t-xs link">
+                        Forgot password?
+                      </Link>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="auth-password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className="input input-action"
+                      required
+                      minLength={mode === 'login' ? undefined : MIN_PASSWORD_LENGTH}
+                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                      aria-describedby={mode === 'register' ? 'password-hint' : undefined}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                      className="absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-md text-fg-subtle transition-colors hover:text-fg"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                  {mode === 'register' ? (
+                    formData.password ? (
+                      <PasswordStrength password={formData.password} />
+                    ) : (
+                      <p id="password-hint" className="field-hint">
+                        At least {MIN_PASSWORD_LENGTH} characters.
+                      </p>
+                    )
+                  ) : null}
+                </div>
+              )}
+
+              {needsConfirm && (
+                <div className="field">
+                  <label className="field-label" htmlFor="auth-confirm">
+                    Confirm password
                   </label>
-                  {mode === 'login' && (
-                    <Link to="/forgot-password" className="auth-forgot-link text-xs text-gold hover:text-gold-hover transition-colors">Forgot password?</Link>
+                  <div className="relative">
+                    <input
+                      id="auth-confirm"
+                      name="confirmPassword"
+                      type={showConfirm ? 'text' : 'password'}
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className="input input-action"
+                      required
+                      autoComplete="new-password"
+                      aria-invalid={mismatch || undefined}
+                      aria-describedby={mismatch ? 'confirm-error' : undefined}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm((v) => !v)}
+                      aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                      aria-pressed={showConfirm}
+                      className="absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-md text-fg-subtle transition-colors hover:text-fg"
+                    >
+                      {showConfirm ? (
+                        <EyeOff className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                  {mismatch && (
+                    <p id="confirm-error" className="field-error">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      The passwords do not match.
+                    </p>
                   )}
                 </div>
-                <div className="auth-input-wrapper relative flex items-center group">
-                  <Lock className="auth-input-icon absolute left-3.5 h-4 w-4 text-muted-blue group-focus-within:text-gold transition-colors" />
-                  <input
-                    id="auth-password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    className="auth-input auth-input-password w-full bg-surface-2 border border-line rounded-xl py-2.5 pl-10 pr-10 text-sm text-text-primary focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/50 transition-all placeholder-muted-blue/50"
-                    required
-                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading || mismatch}
+                className={buttonClass({ variant: 'primary', size: 'lg', className: 'mt-1 w-full' })}
+              >
+                {isLoading ? (
+                  <>
+                    <span className="spinner" aria-hidden="true" />
+                    Working…
+                  </>
+                ) : (
+                  <>
+                    {copy.submit}
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {(mode === 'login' || mode === 'register') && (
+              <>
+                <div className="my-6 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-line" />
+                  <span className="t-label text-fg-subtle">or</span>
+                  <span className="h-px flex-1 bg-line" />
+                </div>
+
+                {GOOGLE_CLIENT_ID ? (
+                  <GoogleButton
+                    disabled={isLoading}
+                    onStart={() => {
+                      setError('');
+                      setIsLoading(true);
+                    }}
+                    onSuccess={() => navigate(redirectTo, { replace: true })}
+                    onError={(message) => {
+                      setError(message);
+                      setIsLoading(false);
+                    }}
+                    loginWithGoogle={loginWithGoogle}
                   />
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="auth-toggle-password absolute right-3.5 text-muted-blue hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    disabled
+                    title="Google sign-in is not configured for this deployment"
+                    className={buttonClass({ variant: 'secondary', className: 'w-full' })}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <GoogleIcon />
+                    Google sign-in unavailable
                   </button>
-                </div>
-                {mode === 'register' && <PasswordStrength password={formData.password} />}
-              </div>
+                )}
+              </>
             )}
 
-            {(mode === 'register' || mode === 'reset-password') && (
-              <div className="auth-input-group flex flex-col gap-1.5">
-                <label className="auth-label text-sm font-medium text-text-primary" htmlFor="auth-confirm-password">Confirm Password</label>
-                <div className="auth-input-wrapper relative flex items-center group">
-                  <KeyRound className="auth-input-icon absolute left-3.5 h-4 w-4 text-muted-blue group-focus-within:text-gold transition-colors" />
-                  <input
-                    id="auth-confirm-password"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    className="auth-input auth-input-password w-full bg-surface-2 border border-line rounded-xl py-2.5 pl-10 pr-10 text-sm text-text-primary focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/50 transition-all placeholder-muted-blue/50"
-                    required
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="auth-toggle-password absolute right-3.5 text-muted-blue hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="auth-submit-btn mt-2 w-full flex items-center justify-center gap-2 bg-gold hover:bg-gold-hover text-navy font-semibold py-3 px-4 rounded-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed hover:shadow-[0_0_20px_rgba(245,200,66,0.3)] active:scale-[0.98]"
-            >
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
+            <p className="t-sm mt-8 text-fg-subtle">
+              {mode === 'login' && (
                 <>
-                  {mode === 'login' && 'Sign In'}
-                  {mode === 'register' && 'Create Account'}
-                  {mode === 'forgot-password' && 'Send Reset Link'}
-                  {mode === 'reset-password' && 'Reset Password'}
-                  <ArrowRight className="h-4 w-4" />
+                  New here?{' '}
+                  <Link to="/register" className="link">
+                    Create an account
+                  </Link>
                 </>
               )}
-            </button>
-          </motion.form>
-        </AnimatePresence>
-
-        {(mode === 'login' || mode === 'register') && (
-          <div className="mt-5">
-            <div className="relative flex items-center py-2">
-              <div className="flex-grow border-t border-line"></div>
-              <span className="flex-shrink-0 mx-4 text-muted-blue text-xs font-medium uppercase tracking-wider">Or continue with</span>
-              <div className="flex-grow border-t border-line"></div>
-            </div>
-
-            {GOOGLE_CLIENT_ID ? (
-              <GoogleSignInButton
-                disabled={isLoading}
-                onStart={() => {
-                  setError('');
-                  setIsLoading(true);
-                }}
-                onSuccess={() => navigate('/chat', { replace: true })}
-                onError={(message) => {
-                  setError(message);
-                  setIsLoading(false);
-                }}
-                loginWithGoogle={loginWithGoogle}
-              />
-            ) : (
-              <GoogleUnavailableButton
-                disabled={isLoading}
-                onError={(message) => setError(message)}
-              />
-            )}
+              {mode === 'register' && (
+                <>
+                  Already have an account?{' '}
+                  <Link to="/login" className="link">
+                    Sign in
+                  </Link>
+                </>
+              )}
+              {(mode === 'forgot-password' || mode === 'reset-password') && (
+                <Link to="/login" className="link inline-flex items-center gap-1.5">
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  Back to sign in
+                </Link>
+              )}
+            </p>
           </div>
-        )}
-
-        {/* Footer links */}
-        <div className="auth-footer mt-8 text-center">
-          {mode === 'login' && (
-            <p className="auth-footer-text text-sm text-muted-blue">
-              Don't have an account?{' '}
-              <Link to="/register" className="auth-footer-link text-gold hover:text-gold-hover font-medium transition-colors">Create one</Link>
-            </p>
-          )}
-          {mode === 'register' && (
-            <p className="auth-footer-text text-sm text-muted-blue">
-              Already have an account?{' '}
-              <Link to="/login" className="auth-footer-link text-gold hover:text-gold-hover font-medium transition-colors">Sign in</Link>
-            </p>
-          )}
-          {mode === 'forgot-password' && (
-            <p className="auth-footer-text text-sm text-muted-blue">
-              Remember your password?{' '}
-              <Link to="/login" className="auth-footer-link text-gold hover:text-gold-hover font-medium transition-colors">Back to sign in</Link>
-            </p>
-          )}
-          {mode === 'reset-password' && (
-            <p className="auth-footer-text text-sm text-muted-blue">
-              <Link to="/login" className="auth-footer-link text-gold hover:text-gold-hover font-medium transition-colors">Back to sign in</Link>
-            </p>
-          )}
         </div>
-
-        {/* Bottom decorative line */}
-        <div className="auth-bottom-accent absolute bottom-0 left-1/2 -translate-x-1/2 w-1/3 h-1 bg-gold/50 rounded-t-full shadow-[0_0_10px_rgba(245,200,66,0.5)] animate-pulse" />
-      </motion.div>
-
-      {/* Bottom tagline */}
-      <motion.p
-        className="auth-page-footer relative z-10 mt-8 flex items-center gap-2 text-sm text-muted-blue"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8, duration: 0.5 }}
-      >
-        <Sparkles className="h-3.5 w-3.5 text-gold/60" />
-        AI-powered legal assistance for everyone
-      </motion.p>
+      </div>
     </div>
   );
 }
-
-

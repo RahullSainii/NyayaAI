@@ -26,10 +26,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2">
+      {/* The stack ignores pointer events so it never blocks the UI beneath it;
+          each toast re-enables them for its own dismiss button. */}
+      <div className="pointer-events-none fixed inset-x-4 bottom-4 z-[9999] flex flex-col items-center gap-2 sm:left-auto sm:right-4 sm:items-end">
         <AnimatePresence>
           {toasts.map((toast) => (
-            <Toast key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
+            <div key={toast.id} className="pointer-events-auto">
+              <Toast toast={toast} onClose={() => removeToast(toast.id)} />
+            </div>
           ))}
         </AnimatePresence>
       </div>

@@ -1,21 +1,36 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NyayaAI — AI-Powered Indian Legal Assistant</title>
-    <meta name="description" content="NyayaAI is an AI-powered Indian legal assistant that explains IPC to BNS mappings, legal procedures, and FIR guidance in plain language." />
-    <meta name="theme-color" content="#060910" />
-    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>NyayaAI — Indian criminal law, in plain language</title>
+    <meta
+      name="description"
+      content="Ask about Indian criminal law and get answers with the provisions they came from. Translate Indian Penal Code sections into the Bharatiya Nyaya Sanhita that replaced them on 1 July 2024."
+    />
+    <meta name="theme-color" content="#07080e" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- The official logo is the primary icon. The SVG glyph is kept as a
+         fallback because a 4:3 photo-format logo loses its detail at 16px. -->
+    <link rel="icon" type="image/jpeg" href="/nyaya.jpeg" />
+    <link rel="alternate icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/nyaya.jpeg" />
+
+    <!-- Fonts are loaded once, here. Only the three families and the exact
+         weights the design system uses: Fraunces 600 for display, Manrope
+         400-700 for UI, JetBrains Mono 400-500 for statute numbers. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap"
+    />
   </head>
-  <body class="bg-[#060910] text-[#f0f2f8] font-['Manrope',system-ui,sans-serif] antialiased">
+  <body>
     <div id="root"></div>
     <script src="/env-config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

@@ -1,5 +1,5 @@
-import { RefObject, ChangeEvent, KeyboardEvent } from 'react';
-import { X, MicOff, Mic, Paperclip, Send, Image, FileText, Loader2 } from 'lucide-react';
+import { ChangeEvent, KeyboardEvent, RefObject } from 'react';
+import { FileText, Image, Loader2, Mic, MicOff, Paperclip, Send, X } from 'lucide-react';
 import { Attachment } from '../types';
 import { useChatStore } from '../store/useChatStore';
 
@@ -17,9 +17,15 @@ export interface ChatInputAreaProps {
   fileInputRef: RefObject<HTMLInputElement>;
 }
 
-/** Character count threshold to show the counter */
-const CHAR_COUNT_THRESHOLD = 200;
+/** Show the counter only once length is worth knowing about. */
+const CHAR_COUNT_THRESHOLD = 400;
 
+/**
+ * The composer owns the whole footer region: its own border, padding and reading
+ * measure. Previously the chat page wrapped it in a second padded, gradient
+ * container, so the composer sat inside two competing shells and the disclaimer
+ * was rendered twice.
+ */
 export default function ChatInputArea({
   handleKeyDown,
   handleSend,
@@ -35,59 +41,54 @@ export default function ChatInputArea({
 }: ChatInputAreaProps) {
   const { input, setInput, isLoading } = useChatStore();
 
-  const canSend =
-    (input.trim() || attachments.some((a) => a.content || a.imageData)) &&
-    !isLoading &&
-    !attachments.some((a) => a.loading);
+  const hasPayload = attachments.some((a) => a.content || a.imageData);
+  const isProcessing = attachments.some((a) => a.loading);
+  const canSend = Boolean(input.trim() || hasPayload) && !isLoading && !isProcessing;
 
   return (
-    <div className="z-20 flex w-full shrink-0 justify-center border-t border-glass-border bg-background/95 p-4 backdrop-blur-sm md:p-6">
-      <div className="w-full max-w-[800px]">
+    <div className="shrink-0 border-t border-line bg-ink px-4 pb-3 pt-3 md:px-6">
+      <div className="mx-auto w-full max-w-[46rem]">
         {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
+          <ul className="mb-2 flex flex-wrap gap-1.5">
             {attachments.map((a) => (
-              <div
+              <li
                 key={a.id}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs ${
+                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[0.75rem] ${
                   a.error
-                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                    : a.loading
-                      ? 'border-glass-border bg-slate-800/60 text-on-surface-variant/70'
-                      : 'border-glass-border bg-slate-800 text-on-surface-variant'
+                    ? 'bg-danger/8 text-danger ring-1 ring-inset ring-danger/25'
+                    : 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-line'
                 }`}
               >
                 {a.isImage && a.dataUrl ? (
-                  <img src={a.dataUrl} alt="" className="h-6 w-6 rounded object-cover" />
+                  <img src={a.dataUrl} alt="" className="h-5 w-5 rounded object-cover" />
                 ) : a.loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : a.error ? (
-                  <FileText className="h-4 w-4 text-red-400" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                 ) : a.isImage ? (
-                  <Image className="h-4 w-4" />
+                  <Image className="h-3.5 w-3.5" aria-hidden="true" />
                 ) : (
-                  <FileText className="h-4 w-4" />
+                  <FileText className="h-3.5 w-3.5" aria-hidden="true" />
                 )}
-                <span className="max-w-[160px] truncate">{a.name}</span>
-                {a.loading && <span className="text-on-surface-variant/60">processing…</span>}
-                {a.truncated && <span className="text-on-surface-variant/60">(truncated)</span>}
-                {a.error && <span className="max-w-[220px] truncate">— {a.error}</span>}
+
+                <span className="max-w-[11rem] truncate">{a.name}</span>
+                {a.loading && <span className="text-fg-subtle">reading…</span>}
+                {a.truncated && <span className="text-fg-subtle">truncated</span>}
+                {a.error && <span className="max-w-[13rem] truncate">— {a.error}</span>}
+
                 {!a.loading && (
                   <button
                     onClick={() => removeAttachment(a.id)}
-                    className="transition-colors hover:text-on-surface"
                     aria-label={`Remove ${a.name}`}
+                    className="rounded text-fg-subtle transition-colors hover:text-fg"
                   >
-                    <X size={14} />
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                 )}
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
 
-        <div className="relative flex items-end gap-2 overflow-hidden rounded-xl p-2 shadow-2xl transition-colors glass-panel group focus-within:border-secondary/50">
-          <div className="pointer-events-none absolute inset-0 bg-secondary/5 opacity-0 blur-xl transition-opacity group-focus-within:opacity-100" />
-
+        <div className="flex items-end gap-1 rounded-lg bg-surface p-1.5 shadow-[inset_0_0_0_1px_var(--color-line)] transition-shadow duration-150 focus-within:shadow-[inset_0_0_0_1px_var(--color-gold),0_0_0_3px_rgba(217,169,74,0.14)]">
           <input
             ref={fileInputRef}
             type="file"
@@ -95,65 +96,76 @@ export default function ChatInputArea({
             accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.rtf,.html,.htm,.xml,.yaml,.yml,text/*,image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
             className="hidden"
             onChange={handleFilesSelected}
-            aria-hidden="true"
+            tabIndex={-1}
           />
 
           <button
             type="button"
             onClick={handleAttachClick}
             disabled={isLoading}
-            title="Attach a file"
-            aria-label="Attach a file"
-            className="shrink-0 p-3 text-on-surface-variant transition-colors hover:text-secondary disabled:opacity-50"
+            aria-label="Attach a document or image"
+            className="btn btn-ghost btn-sm btn-icon"
           >
-            <Paperclip className="h-5 w-5" />
+            <Paperclip className="h-4 w-4" aria-hidden="true" />
           </button>
 
+          <label htmlFor="chat-input" className="sr-only">
+            Your question
+          </label>
           <textarea
+            id="chat-input"
             ref={textareaRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            className="relative z-10 w-full min-h-[44px] max-h-[150px] resize-none border-none bg-transparent py-3 text-sm text-on-surface placeholder-on-surface-variant focus:outline-none focus:ring-0"
-            placeholder="Draft a consultation query or cite a provision..."
-            aria-label="Chat message input"
             rows={1}
+            placeholder="Ask about a section, a procedure, or something you've received…"
+            className="max-h-[9rem] min-h-[2.125rem] w-full resize-none self-center bg-transparent px-1.5 py-1.5 text-[0.9375rem] leading-6 text-fg placeholder:text-fg-subtle focus:outline-none"
           />
 
-          <div className="relative z-10 flex shrink-0 items-center gap-1 pb-1 pr-1">
+          <div className="flex shrink-0 items-center gap-1">
             {input.length > CHAR_COUNT_THRESHOLD && (
-              <span className="mr-2 text-xs text-on-surface-variant">{input.length}</span>
+              <span className="t-mono mr-1 text-fg-subtle">{input.length}</span>
             )}
+
             {!recordingNotSupported && (
               <button
+                type="button"
                 onClick={toggleRecording}
                 disabled={isLoading}
-                className={`rounded-lg p-2 transition-colors ${
-                  isRecording
-                    ? 'border border-red-500/30 bg-red-500/20 text-red-400'
-                    : 'text-on-surface-variant hover:bg-white/5 hover:text-secondary'
-                }`}
-                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                aria-pressed={isRecording}
+                aria-label={isRecording ? 'Stop dictation' : 'Dictate your question'}
+                className={`btn btn-sm btn-icon ${isRecording ? 'btn-danger' : 'btn-ghost'}`}
               >
-                {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+                {isRecording ? (
+                  <MicOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Mic className="h-4 w-4" aria-hidden="true" />
+                )}
               </button>
             )}
+
             <button
+              type="button"
               onClick={handleSend}
               disabled={!canSend}
-              className="rounded-lg bg-secondary p-2 text-on-secondary shadow-lg transition-colors hover:bg-secondary-container disabled:bg-surface-variant disabled:text-on-surface-variant disabled:opacity-50"
-              aria-label="Send message"
+              aria-label="Send question"
+              className="btn btn-primary btn-sm btn-icon"
             >
-              <Send className="h-5 w-5" />
+              <Send className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </div>
 
-        <div className="mt-3 text-center">
-          <span className="text-[10px] text-on-surface-variant/50 font-label-caps">
-            NyayaAI can make mistakes. Verify critical legal information.
+        <p className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-[0.6875rem] text-fg-subtle">
+          <span className="hidden items-center gap-1 sm:inline-flex">
+            <kbd className="kbd">Enter</kbd> to send
+            <span className="mx-0.5 text-line-2">·</span>
+            <kbd className="kbd">Shift</kbd>
+            <kbd className="kbd">Enter</kbd> for a new line
           </span>
-        </div>
+          <span>Answers can be wrong — check them against the cited provisions.</span>
+        </p>
       </div>
     </div>
   );

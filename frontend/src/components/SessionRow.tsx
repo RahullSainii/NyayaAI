@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Pin, MessageSquare, Clock, MoreHorizontal } from 'lucide-react';
+import { MessageSquare, MoreHorizontal, Pin } from 'lucide-react';
 import { ChatSession } from '../types';
 
 interface SessionRowProps {
@@ -14,70 +14,95 @@ interface SessionRowProps {
   onMenuOpen: (e: React.MouseEvent, id: string | number) => void;
 }
 
-export const SessionRow: React.FC<SessionRowProps> = memo(({
-  session,
-  isArchived = false,
-  isRenaming,
-  renameValue,
-  onRenameChange,
-  onRenameCommit,
-  onRenameCancel,
-  onSelect,
-  onMenuOpen
-}) => {
-  return (
-    <div
-      data-session-row
-      className={`group relative flex items-center border-l-4 ${
-        session.active && !isArchived ? 'border-secondary bg-white/5' : 'border-transparent hover:bg-white/5'
-      }`}
-    >
-      {isRenaming ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(e) => onRenameChange(e.target.value)}
-          onBlur={() => onRenameCommit(session.id)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); onRenameCommit(session.id); }
-            else if (e.key === 'Escape') onRenameCancel();
-          }}
-          className="flex-1 mx-3 my-2 bg-slate-900 border border-secondary/50 rounded px-2 py-1 text-sm text-on-surface focus:outline-none"
-        />
-      ) : (
-        <>
+/**
+ * One conversation in the sidebar. The options button stays in the tab order at
+ * all times and is only dimmed until hover, so it is reachable without a mouse.
+ */
+export const SessionRow: React.FC<SessionRowProps> = memo(
+  ({
+    session,
+    isArchived = false,
+    isRenaming,
+    renameValue,
+    onRenameChange,
+    onRenameCommit,
+    onRenameCancel,
+    onSelect,
+    onMenuOpen,
+  }) => {
+    const isCurrent = Boolean(session.active) && !isArchived;
+
+    if (isRenaming) {
+      return (
+        <li className="px-2 py-1">
+          <label className="sr-only" htmlFor={`rename-${session.id}`}>
+            Rename conversation
+          </label>
+          <input
+            id={`rename-${session.id}`}
+            autoFocus
+            value={renameValue}
+            onChange={(event) => onRenameChange(event.target.value)}
+            onBlur={() => onRenameCommit(session.id)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                onRenameCommit(session.id);
+              } else if (event.key === 'Escape') {
+                onRenameCancel();
+              }
+            }}
+            className="input h-9 text-[0.8125rem]"
+          />
+        </li>
+      );
+    }
+
+    return (
+      <li className="group relative px-2">
+        <div
+          className={`flex items-center rounded-md transition-colors duration-150 ${
+            isCurrent ? 'bg-surface-2' : 'hover:bg-surface-2/60'
+          }`}
+        >
           <button
             onClick={() => onSelect(session.id)}
-            aria-label={`Select session ${session.title}`}
-            className={`flex items-center gap-3 pl-4 py-3 flex-1 min-w-0 text-left ${
-              session.active && !isArchived ? 'text-secondary font-bold' : 'text-on-surface-variant'
-            }`}
+            aria-current={isCurrent ? 'true' : undefined}
+            className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-2.5 pr-1 text-left"
           >
-            <span className="shrink-0">
-              {session.pinned ? (
-                <Pin className="w-5 h-5" />
-              ) : session.active && !isArchived ? (
-                <MessageSquare className="w-5 h-5" />
-              ) : (
-                <Clock className="w-5 h-5" />
-              )}
+            {session.pinned ? (
+              <Pin
+                className={`h-3.5 w-3.5 shrink-0 ${isCurrent ? 'text-gold' : 'text-fg-subtle'}`}
+                aria-label="Pinned"
+              />
+            ) : (
+              <MessageSquare
+                className={`h-3.5 w-3.5 shrink-0 ${isCurrent ? 'text-gold' : 'text-fg-subtle'}`}
+                aria-hidden="true"
+              />
+            )}
+            <span
+              className={`truncate text-[0.8125rem] ${
+                isCurrent ? 'font-medium text-fg' : 'text-fg-muted'
+              }`}
+            >
+              {session.title}
             </span>
-            <span className="font-label-caps text-label-caps truncate">{session.title}</span>
           </button>
+
           <button
             data-session-optbtn
-            onClick={(e) => onMenuOpen(e, session.id)}
-            title="Options"
+            onClick={(event) => onMenuOpen(event, session.id)}
             aria-label={`Options for ${session.title}`}
             aria-haspopup="menu"
-            className="p-2 mr-1 rounded-md text-on-surface-variant/50 hover:text-on-surface hover:bg-white/10 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-all shrink-0"
+            className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-subtle opacity-60 transition-all duration-150 hover:bg-surface-3 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
           >
-            <MoreHorizontal className="w-[18px] h-[18px]" />
+            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
           </button>
-        </>
-      )}
-    </div>
-  );
-});
+        </div>
+      </li>
+    );
+  },
+);
 
 SessionRow.displayName = 'SessionRow';

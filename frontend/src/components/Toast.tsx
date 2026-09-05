@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
+import { AlertCircle, Check, Info, X } from 'lucide-react';
 
 interface ToastProps {
   toast: {
@@ -11,31 +11,33 @@ interface ToastProps {
   onClose: () => void;
 }
 
+const TONE: Record<ToastProps['toast']['variant'], { icon: React.ElementType; cls: string }> = {
+  success: { icon: Check, cls: 'text-affirm' },
+  error: { icon: AlertCircle, cls: 'text-danger' },
+  info: { icon: Info, cls: 'text-past' },
+};
+
 export const Toast: React.FC<ToastProps> = React.memo(({ toast, onClose }) => {
-  const icons = {
-    success: <CheckCircle className="w-5 h-5 text-green-500" />,
-    error: <AlertCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
-  };
+  const { icon: Icon, cls } = TONE[toast.variant];
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 50, scale: 0.9 }}
+      initial={{ opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-3 bg-surface border border-line rounded-lg shadow-lg p-4 pr-12 relative min-w-[300px]"
+      exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
+      transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+      role={toast.variant === 'error' ? 'alert' : 'status'}
+      className="overlay-panel flex w-[min(24rem,calc(100vw-2rem))] items-start gap-2.5 p-3"
     >
-      {icons[toast.variant]}
-      <p className="text-sm text-fg font-medium">{toast.message}</p>
+      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${cls}`} aria-hidden="true" />
+      <p className="min-w-0 flex-1 text-[0.8125rem] leading-relaxed text-fg">{toast.message}</p>
       <button
         onClick={onClose}
-        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg rounded-md hover:bg-white/5 transition-colors"
-        aria-label="Close notification"
+        aria-label="Dismiss"
+        className="grid h-5 w-5 shrink-0 place-items-center rounded text-fg-subtle transition-colors hover:text-fg"
       >
-        <X className="w-4 h-4" />
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </motion.div>
   );

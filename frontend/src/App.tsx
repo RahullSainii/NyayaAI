@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { SkipToContent } from './components/SkipToContent';
+import CommandPalette from './components/CommandPalette';
+import { Spinner } from './components/ui/Feedback';
 
 // Lazy-load route-level components for automatic code splitting.
 const Landing  = lazy(() => import('./pages/Landing'));
@@ -18,31 +20,34 @@ const PAGE_TRANSITION_DURATION = 0.25;
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-ink">
-        <div className="auth-spinner" role="status" aria-label="Loading">
-          <span className="sr-only">Loading…</span>
-        </div>
-      </div>
-    );
+    return <RouteFallback label="Checking your session" />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    /* Carry the attempted destination through sign-in, so a link like
+       /chat?q=… still lands on the question the user came for. */
+    return (
+      <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+    );
   }
 
   return children;
 }
 
-/** Suspense fallback shown while lazy chunks load. */
-function PageLoader() {
+/**
+ * Shared waiting screen for lazy route chunks and the session check.
+ *
+ * Deliberately quiet — a full-page spinner that appears for 80ms reads as a
+ * flicker, so this is a small mark low in the viewport rather than a centred
+ * loader that draws the eye.
+ */
+function RouteFallback({ label }: { label: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ink">
-      <div className="auth-spinner" role="status" aria-label="Loading page">
-        <span className="sr-only">Loading page…</span>
-      </div>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-ink">
+      <Spinner size="lg" label={label} />
     </div>
   );
 }
@@ -65,7 +70,7 @@ function AnimatedRoutes() {
   const location = useLocation();
 
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<RouteFallback label="Loading" />}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route
@@ -148,6 +153,7 @@ export default function App() {
         <AuthProvider>
           <ToastProvider>
             <SkipToContent />
+            <CommandPalette />
             <AnimatedRoutes />
           </ToastProvider>
         </AuthProvider>

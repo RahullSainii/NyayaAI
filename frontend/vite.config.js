@@ -38,6 +38,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/setupTests.js',
+    // The setup file is TypeScript; pointing at a .js path silently broke the
+    // jest-dom matchers for every test in the suite.
+    setupFiles: './src/setupTests.ts',
   },
 })
