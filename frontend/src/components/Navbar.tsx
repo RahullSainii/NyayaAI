@@ -1,31 +1,42 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, LogOut, User, Menu, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { LogOut, Menu, Search, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import logo from '../assets/nyaya.jpeg';
+import { BrandLockup, BrandMark } from './ui/BrandMark';
+import { buttonClass } from './ui/Button';
+import { commandKeyLabel, openCommandPalette } from './CommandPalette';
 
 interface NavLinkItem {
   label: string;
-  path?: string;
-  href?: string;
+  path: string;
+  /** Short description shown in the mobile sheet, where there is room for it. */
+  hint: string;
 }
 
-const navLinks: NavLinkItem[] = [
-  { label: 'IPC to BNS', path: '/mapping' },
-  { label: 'Ask AI', path: '/chat' },
-  { label: 'About', href: '#features' },
+const NAV_LINKS: NavLinkItem[] = [
+  { label: 'Ask', path: '/chat', hint: 'Put a question to the assistant' },
+  { label: 'IPC → BNS', path: '/mapping', hint: 'Look up a section in the new code' },
 ];
 
-const SCROLL_THRESHOLD = 20;
+const SCROLL_THRESHOLD = 8;
 
+/**
+ * Primary navigation.
+ *
+ * The desktop bar only appears at `lg`. Below that the full row (lockup, links,
+ * two account actions) does not fit, which is why the previous `md` breakpoint
+ * let "Get Started" collide with "Sign In" around 1024px.
+ */
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
-  const [scrolled, setScrolled] = useState<boolean>(false);
-  const [mobileOpen, setMobileOpen] = useState<boolean>(false);
-  const rafRef = useRef<number>(0);
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const rafRef = useRef(0);
 
   const handleScroll = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -35,6 +46,7 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', handleScroll);
@@ -42,206 +54,256 @@ export default function Navbar() {
     };
   }, [handleScroll]);
 
+  /* Mobile sheet: lock the page, trap Tab, close on Escape, restore focus. */
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !sheetRef.current) return;
+
+      const focusable = sheetRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled])',
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    const focusTimer = window.setTimeout(() => {
+      sheetRef.current?.querySelector<HTMLElement>('a[href], button')?.focus();
+    }, 60);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      toggleRef.current?.focus();
+    };
+  }, [menuOpen]);
+
+  /* Close the sheet on navigation. */
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
   const handleLogout = () => {
     logout();
+    setMenuOpen(false);
     navigate('/');
-    setMobileOpen(false);
   };
+
+  const firstName = user?.name?.trim().split(/\s+/)[0] || 'Account';
 
   return (
     <>
-      <motion.nav
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className={`fixed left-0 right-0 top-0 z-50 transition-all duration-300 ${
-          scrolled ? 'surface-glass-strong' : 'bg-transparent'
+      <header
+        className={`fixed inset-x-0 top-0 z-50 border-b transition-colors duration-200 ${
+          scrolled
+            ? 'border-line bg-ink/85 backdrop-blur-xl backdrop-saturate-150'
+            : 'border-transparent bg-transparent'
         }`}
       >
-        <div className="mx-auto max-w-7xl px-4 pt-3 md:px-6">
-          <div className="rounded-full border border-white/10 bg-surface/68 px-4 py-2.5 shadow-[0_18px_60px_rgba(5,10,20,0.32)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-4">
-              <Link to="/" className="flex min-w-0 items-center gap-3 group">
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-2xl border border-gold/30 bg-white shadow-[0_10px_24px_rgba(245,200,66,0.14)] transition-all duration-300 group-hover:shadow-[0_0_15px_rgba(245,200,66,0.5)] group-hover:border-gold">
-                  <img src={logo} alt="NyayaAI logo" className="h-full w-full object-contain" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-heading text-lg font-semibold leading-none tracking-[0.12em] text-text-primary md:text-xl">
-                    NYAYA <span className="text-gold">AI</span>
-                  </p>
-                  <p className="mt-1 hidden text-[10px] uppercase tracking-[0.24em] text-muted-blue md:block">
-                    Legal chatbot for everyone
-                  </p>
-                </div>
-              </Link>
+        <nav
+          aria-label="Primary"
+          className="container-page flex h-[var(--nav-h)] items-center justify-between gap-6"
+        >
+          <BrandLockup to="/" showTagline />
 
-              <div className="hidden items-center gap-7 md:flex">
-                {navLinks.map((link) => {
-                  const isActive = link.path ? location.pathname === link.path : location.pathname === '/';
+          {/* Desktop links */}
+          <ul className="hidden items-center gap-1 lg:flex">
+            {NAV_LINKS.map((link) => {
+              const isActive = location.pathname === link.path;
+              return (
+                <li key={link.path}>
+                  <Link
+                    to={link.path}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`lum-interactive relative flex h-8 items-center rounded-md px-3 text-[0.875rem] font-medium ${
+                      isActive ? 'text-fg' : 'text-fg-subtle hover:text-fg'
+                    }`}
+                  >
+                    {link.label}
+                    {isActive && (
+                      <motion.span
+                        layoutId="nav-active"
+                        className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gold shadow-[0_0_10px_rgb(var(--lum-gold)/0.55)]"
+                        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                      />
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
 
-                  if (link.href) {
-                    return (
-                      <a
-                        key={link.label}
-                        href={link.href}
-                        className="relative text-sm font-medium text-muted-blue transition-all duration-200 hover:-translate-y-0.5 hover:text-text-primary"
-                      >
-                        {link.label}
-                      </a>
-                    );
-                  }
+          {/* Desktop account actions */}
+          <div className="hidden items-center gap-2 lg:flex">
+            {/* A visible trigger, so the shortcut is discoverable rather than
+                a hidden feature only power users ever find. */}
+            <button
+              onClick={openCommandPalette}
+              aria-label="Open the command palette to search sections"
+              className="mr-1 flex h-8 items-center gap-2 rounded-md bg-surface-2 px-2.5 text-[0.8125rem] text-fg-subtle ring-1 ring-inset ring-line transition-colors duration-150 hover:bg-surface-3 hover:text-fg"
+            >
+              <Search className="h-3.5 w-3.5" aria-hidden="true" />
+              Search
+              <kbd className="kbd ml-1">{commandKeyLabel()}</kbd>
+            </button>
 
-                  return (
-                    <Link
-                      key={link.label}
-                      to={link.path || '/'}
-                      className={`relative text-sm font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'text-gold'
-                          : 'text-muted-blue hover:text-text-primary hover:-translate-y-0.5'
-                      }`}
-                    >
-                      {link.label}
-                      {isActive && (
-                        <motion.div
-                          layoutId="navbar-indicator"
-                          className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-gold"
-                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                        />
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-
-              <div className="flex items-center gap-3">
-                {isAuthenticated ? (
-                  <div className="hidden md:flex items-center gap-3">
-                    <div className="group relative hidden items-center gap-2 rounded-full border border-white/8 bg-white/4 px-3 py-1.5 md:flex transition-all">
-                      <div className="absolute inset-0 rounded-full border border-gold/30 opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity" />
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/20 relative z-10">
-                        <User className="h-3.5 w-3.5 text-gold" />
-                      </div>
-                      <span className="text-sm font-medium text-text-primary relative z-10">
-                        {user?.name?.split(' ')[0] || 'User'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/4 px-4 py-2 text-sm font-medium text-muted-blue transition-all duration-300 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 active:scale-95 md:px-4 md:py-2.5"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span className="hidden md:inline">Logout</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="hidden md:flex items-center gap-3">
-                    <Link
-                      to="/login"
-                      className="group relative inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-fg-muted transition-all duration-300 hover:border-gold/40 hover:text-gold hover:bg-gold/[0.06] hover:shadow-[0_0_20px_rgba(212,166,78,0.08)] active:scale-[0.97] backdrop-blur-md"
-                    >
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.08] transition-all duration-300 group-hover:bg-gold/15 group-hover:border-gold/30">
-                        <User className="h-3.5 w-3.5 transition-colors duration-300 group-hover:text-gold" />
-                      </div>
-                      Sign In
-                    </Link>
-                    <Link
-                      to="/register"
-                      className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full bg-gradient-to-b from-gold-bright via-gold to-[#b88d3e] px-5 py-2.5 text-sm font-bold text-ink transition-all duration-300 hover:shadow-[0_0_28px_rgba(212,166,78,0.35),0_4px_16px_rgba(212,166,78,0.2)] active:scale-[0.97] before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/25 before:to-transparent before:opacity-0 before:transition-opacity before:duration-300 hover:before:opacity-100"
-                    >
-                      <span className="relative z-10 flex items-center gap-2">
-                        Get Started
-                        <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-                      </span>
-                    </Link>
-                  </div>
-                )}
-                
-                <button 
-                  className="md:hidden p-2 text-muted-blue hover:text-text-primary focus:outline-none"
-                  onClick={() => setMobileOpen(true)}
-                  aria-label="Open Menu"
-                >
-                  <Menu className="h-6 w-6" />
+            {isAuthenticated ? (
+              <>
+                <span className="flex items-center gap-2 pr-1 text-[0.8125rem] text-fg-muted">
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-gold/15 text-[0.625rem] font-bold text-gold">
+                    {firstName.charAt(0).toUpperCase()}
+                  </span>
+                  {firstName}
+                </span>
+                <button onClick={handleLogout} className={buttonClass({ variant: 'ghost', size: 'sm' })}>
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Sign out
                 </button>
-              </div>
-            </div>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className={buttonClass({ variant: 'ghost', size: 'sm' })}>
+                  Sign in
+                </Link>
+                <Link to="/chat" className={buttonClass({ variant: 'primary', size: 'sm' })}>
+                  Ask a question
+                </Link>
+              </>
+            )}
           </div>
-        </div>
-      </motion.nav>
+
+          {/* Mobile trigger */}
+          <button
+            ref={toggleRef}
+            onClick={() => setMenuOpen(true)}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
+            aria-label="Open menu"
+            className={buttonClass({ variant: 'ghost', iconOnly: true, className: 'lg:hidden' })}
+          >
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </nav>
+      </header>
 
       <AnimatePresence>
-        {mobileOpen && (
+        {menuOpen && (
           <motion.div
+            id="mobile-nav"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[60] surface-glass-strong backdrop-blur-2xl flex flex-col md:hidden"
+            transition={{ duration: 0.16 }}
+            className="fixed inset-0 z-[60] bg-ink/95 backdrop-blur-md lg:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
           >
-            <div className="flex justify-end p-6">
-              <button onClick={() => setMobileOpen(false)} className="p-2 text-text-primary" aria-label="Close Menu">
-                <X className="h-8 w-8" />
-              </button>
-            </div>
-            
-            <div className="flex flex-col items-center justify-center flex-1 gap-8">
-              {navLinks.map((link, i) => {
-                const isActive = link.path ? location.pathname === link.path : location.pathname === '/';
-                return (
-                  <motion.div
-                    key={link.label}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    transition={{ delay: i * 0.1, duration: 0.4 }}
-                  >
-                    {link.href ? (
-                      <a href={link.href} onClick={() => setMobileOpen(false)} className="text-3xl font-display font-medium text-text-primary hover:text-gold transition-colors">
-                        {link.label}
-                      </a>
-                    ) : (
-                      <Link to={link.path || '/'} onClick={() => setMobileOpen(false)} className={`text-3xl font-display font-medium transition-colors ${isActive ? 'text-gold' : 'text-text-primary hover:text-gold'}`}>
-                        {link.label}
+            <motion.div
+              ref={sheetRef}
+              initial={{ y: -12 }}
+              animate={{ y: 0 }}
+              exit={{ y: -12 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+              className="flex h-full flex-col"
+            >
+              <div className="container-page flex h-[var(--nav-h)] shrink-0 items-center justify-between">
+                <BrandLockup to={null} showTagline />
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  aria-label="Close menu"
+                  className={buttonClass({ variant: 'ghost', size: 'sm', iconOnly: true })}
+                >
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="container-page flex min-h-0 flex-1 flex-col overflow-y-auto pb-8 pt-4">
+                <ul className="flex flex-col">
+                  {NAV_LINKS.map((link) => {
+                    const isActive = location.pathname === link.path;
+                    return (
+                      <li key={link.path} className="border-b border-line">
+                        <Link
+                          to={link.path}
+                          aria-current={isActive ? 'page' : undefined}
+                          className="flex items-baseline justify-between gap-4 rounded-md py-4"
+                        >
+                          <span className="flex flex-col gap-1">
+                            {/* Gold means "current" throughout the app, so the
+                                active route is lit the same way badge-current is. */}
+                            <span
+                              className={`t-h3 ${isActive ? 'lum-label text-gold' : 'text-fg'}`}
+                            >
+                              {link.label}
+                            </span>
+                            <span className="t-sm text-fg-subtle">{link.hint}</span>
+                          </span>
+                          {isActive && <span className="badge badge-current">Current</span>}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="mt-8 flex flex-col gap-2.5">
+                  {isAuthenticated ? (
+                    <>
+                      <div className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3.5 py-3">
+                        <BrandMark size="sm" />
+                        <span className="min-w-0">
+                          <span className="t-ui block truncate text-fg">{user?.name || 'Signed in'}</span>
+                          {user?.email && (
+                            <span className="t-xs block truncate text-fg-subtle">{user.email}</span>
+                          )}
+                        </span>
+                      </div>
+                      <button
+                        onClick={handleLogout}
+                        className={buttonClass({ variant: 'secondary', size: 'lg', className: 'w-full' })}
+                      >
+                        <LogOut className="h-4 w-4" aria-hidden="true" />
+                        Sign out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        to="/chat"
+                        className={buttonClass({ variant: 'primary', size: 'lg', className: 'w-full' })}
+                      >
+                        Ask a question
                       </Link>
-                    )}
-                  </motion.div>
-                );
-              })}
-              
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                transition={{ delay: navLinks.length * 0.1, duration: 0.4 }}
-                className="mt-8 flex flex-col gap-4 w-3/4 max-w-xs"
-              >
-                {isAuthenticated ? (
-                  <>
-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 mb-4">
-                      <User className="h-5 w-5 text-gold" />
-                      <span className="text-lg font-medium text-text-primary">{user?.name || 'User'}</span>
-                    </div>
-                    <button onClick={handleLogout} className="flex items-center justify-center gap-2 w-full rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-400 font-medium hover:bg-red-500/20 transition-colors">
-                      <LogOut className="h-5 w-5" />
-                      Logout
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link to="/login" onClick={() => setMobileOpen(false)} className="relative flex items-center justify-center gap-2.5 w-full rounded-full border border-white/10 bg-white/[0.04] px-5 py-3.5 text-fg-muted font-medium hover:border-gold/40 hover:text-gold hover:bg-gold/[0.06] transition-all backdrop-blur-md overflow-hidden">
-                      <User className="h-4 w-4" />
-                      Sign In
-                    </Link>
-                    <Link to="/register" onClick={() => setMobileOpen(false)} className="relative flex items-center justify-center gap-2.5 w-full rounded-full bg-gradient-to-b from-gold-bright via-gold to-[#b88d3e] px-5 py-3.5 text-ink font-bold hover:shadow-[0_0_28px_rgba(212,166,78,0.35)] transition-all overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/25 before:to-transparent">
-                      <span className="relative z-10 flex items-center gap-2">
-                        Get Started <ArrowRight className="h-4 w-4" />
-                      </span>
-                    </Link>
-                  </>
-                )}
-              </motion.div>
-            </div>
+                      <Link
+                        to="/login"
+                        className={buttonClass({ variant: 'secondary', size: 'lg', className: 'w-full' })}
+                      >
+                        Sign in
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,338 +1,400 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Scale, ArrowRight, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  Info,
+  MessageSquare,
+  RotateCw,
+  Scale,
+  Search,
+} from 'lucide-react';
 import Navbar from '../components/Navbar';
-import SectionCard from '../components/SectionCard';
-import MappingDrawer from '../components/MappingDrawer';
-import { apiFetch } from '../lib/api';
-import type { LegalSection, ApiMappingResult } from '../types';
+import { SectionMappingRow } from '../components/SectionMappingRow';
+import { Backdrop } from '../components/ui/Backdrop';
+import { buttonClass } from '../components/ui/Button';
+import { EmptyState, Skeleton } from '../components/ui/Feedback';
+import { useSectionLookup } from '../hooks/useSectionLookup';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { normalizeSectionInput, QUICK_PICKS, SECTION_NOTES } from '../lib/sections';
+import type { MappingResult } from '../lib/sections';
 
-const SAMPLE_SECTIONS: LegalSection[] = [
-  {
-    id: 1,
-    ipcSection: '302',
-    ipcTitle: 'Punishment for Murder',
-    bnsSection: '103(1)',
-    bnsTitle: 'Punishment for murder',
-    punishment: 'Death or imprisonment for life, and fine',
-    cognizable: true,
-    bailable: false,
-    description:
-      'Whoever commits murder shall be punished with death, or imprisonment for life, and shall also be liable to fine.',
-  },
-  {
-    id: 2,
-    ipcSection: '304',
-    ipcTitle: 'Punishment for Culpable Homicide not amounting to Murder',
-    bnsSection: '105',
-    bnsTitle: 'Punishment for culpable homicide not amounting to murder',
-    punishment: 'Imprisonment for life, or up to 10 years and fine',
-    cognizable: true,
-    bailable: false,
-    description:
-      'Punishment varies based on the degree of culpability and intent involved in the act.',
-  },
-  {
-    id: 3,
-    ipcSection: '376',
-    ipcTitle: 'Punishment for Rape',
-    bnsSection: '64',
-    bnsTitle: 'Punishment for rape',
-    punishment:
-      'Rigorous imprisonment not less than 10 years, may extend to life',
-    cognizable: true,
-    bailable: false,
-    description:
-      'This provision covers punishment for rape with enhanced minimum sentences.',
-  },
-  {
-    id: 4,
-    ipcSection: '420',
-    ipcTitle: 'Cheating and dishonestly inducing delivery of property',
-    bnsSection: '341',
-    bnsTitle: 'Cheating and dishonestly inducing delivery of property',
-    punishment: 'Imprisonment up to 7 years and fine',
-    cognizable: true,
-    bailable: false,
-    description:
-      'This section deals with fraud and cheating involving delivery of property.',
-  },
-  {
-    id: 5,
-    ipcSection: '498A',
-    ipcTitle: 'Cruelty by Husband or Relatives',
-    bnsSection: '85',
-    bnsTitle: 'Cruelty by husband or his relatives',
-    punishment: 'Imprisonment up to 3 years and fine',
-    cognizable: true,
-    bailable: false,
-    description:
-      'Deals with domestic cruelty and related protections for married women.',
-  },
-];
-
-const SECTION_DETAILS: Record<string, LegalSection> = Object.fromEntries(
-  SAMPLE_SECTIONS.map((section) => [section.ipcSection, section]),
-);
-
-const normalizeSectionInput = (value: string): string =>
-  value.trim().toUpperCase().replace(/^(?:IPC|BNS|SECTION|SEC|#|\s)+/i, '');
-
-const buildSectionFromApi = (result: ApiMappingResult): LegalSection => {
-  const fallback = SECTION_DETAILS[result.ipc] || {};
-  const bnsSection = result.bns || 'Not Found';
-  const mappingFound = bnsSection !== 'Not Found';
-
-  return {
-    id: crypto.randomUUID(),
-    ipcSection: result.ipc,
-    ipcTitle: fallback.ipcTitle || `IPC Section ${result.ipc}`,
-    bnsSection,
-    bnsTitle: fallback.bnsTitle || result.description || 'BNS mapping result',
-    punishment:
-      fallback.punishment ||
-      (mappingFound
-        ? 'Refer to the full statute text for punishment details.'
-        : 'No mapped BNS punishment information is available for this section.'),
-    cognizable: fallback.cognizable ?? false,
-    bailable: fallback.bailable ?? false,
-    description:
-      fallback.description ||
-      result.description ||
-      'No additional mapping description is available.',
-  };
-};
-
-function Mapping() {
-  const [search, setSearch] = useState<string>('');
-  const [selectedSection, setSelectedSection] = useState<LegalSection | null>(null);
-  const [resultSection, setResultSection] = useState<LegalSection | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
-
-  const runLookup = async (rawValue: string) => {
-    const ipcSection = normalizeSectionInput(rawValue);
-
-    if (!ipcSection) {
-      setResultSection(null);
-      setError('');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const response = await apiFetch(`/map?ipc=${encodeURIComponent(ipcSection)}`);
-
-      if (!response.ok) {
-        throw new Error(`Mapping request failed with status ${response.status}`);
-      }
-
-      const result: ApiMappingResult = await response.json();
-      const mappedSection = buildSectionFromApi(result);
-      setResultSection(mappedSection);
-    } catch {
-      setResultSection(null);
-      setError(
-        'Unable to fetch mapping right now. Please try again in a moment.',
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runLookup(search);
-  };
-
-  const handleQuickPick = async (section: LegalSection) => {
-    setSearch(section.ipcSection);
-    await runLookup(section.ipcSection);
-  };
-
+/** A labelled value in the record. Renders nothing when the value is absent. */
+function RecordField({ label, children }: { label: string; children?: React.ReactNode }) {
+  if (children === undefined || children === null || children === '') return null;
   return (
-    <div className="min-h-screen bg-ink text-fg font-body">
-      <Navbar />
-
-      <main className="max-w-7xl mx-auto px-6 pt-28 pb-16">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center md:text-left"
-        >
-          <h1 className="text-4xl md:text-5xl font-display font-bold text-fg">
-            IPC <span className="text-gold mx-2 inline-block"><ArrowRight className="inline w-8 h-8" /></span> BNS Mapping
-          </h1>
-          <p className="text-fg-muted mt-4 text-lg md:text-xl font-body max-w-2xl">
-            Enter an IPC section number to fetch its live BNS mapping from the backend API.
-          </p>
-        </motion.div>
-
-        <motion.form
-          onSubmit={handleSubmit}
-          className="mt-10 max-w-3xl"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-        >
-          <div className="flex flex-col md:flex-row gap-4">
-            <div 
-              className="relative flex-1 bg-surface-glass-strong rounded-xl border border-line transition-all duration-300 focus-within:border-gold-glow focus-within:shadow-[0_0_15px_rgba(255,215,0,0.15)]"
-            >
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-fg-muted" />
-              <div className="relative">
-                <input
-                  type="text"
-                  id="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="w-full bg-transparent pl-12 pr-4 pt-5 pb-2 text-fg focus:outline-none peer"
-                  placeholder=" "
-                />
-                <label 
-                  htmlFor="search"
-                  className="absolute left-12 top-1.5 -translate-y-0 text-xs text-fg-muted transition-all duration-200 pointer-events-none peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:text-base peer-focus:top-1.5 peer-focus:-translate-y-0 peer-focus:text-xs"
-                >
-                  Enter IPC section (e.g., 302, 498A)
-                </label>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-gold-dim to-gold text-ink px-8 py-3.5 rounded-xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
-            >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Find Mapping'}
-            </button>
-          </div>
-        </motion.form>
-
-        <motion.div
-          className="mt-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <p className="text-sm font-semibold text-fg-muted uppercase tracking-wider mb-3">
-            Quick picks
-          </p>
-          <div className="flex flex-wrap gap-3">
-            {SAMPLE_SECTIONS.map((section) => (
-              <motion.button
-                whileHover={{ y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                key={section.id}
-                type="button"
-                onClick={() => handleQuickPick(section)}
-                className="bg-surface border border-line text-fg rounded-lg px-4 py-2 hover:border-gold-line hover:shadow-[0_0_10px_rgba(255,215,0,0.1)] transition-all text-sm"
-              >
-                IPC {section.ipcSection}
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="mt-12"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
-          <AnimatePresence mode="wait">
-            {isLoading && (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="w-full max-w-3xl"
-              >
-                <div className="bg-surface border border-line rounded-xl p-6 shadow-sm animate-pulse">
-                  <div className="h-6 bg-line rounded w-1/3 mb-4"></div>
-                  <div className="h-8 bg-line rounded w-2/3 mb-4"></div>
-                  <div className="h-4 bg-line rounded w-1/4"></div>
-                </div>
-              </motion.div>
-            )}
-
-            {error && !isLoading && (
-              <motion.div
-                key="error"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="w-full max-w-3xl"
-              >
-                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 flex flex-col items-center justify-center text-center gap-3">
-                  <AlertCircle className="w-8 h-8 text-red-400" />
-                  <p className="text-red-400">{error}</p>
-                  <button onClick={() => runLookup(search)} className="mt-2 text-sm text-red-300 hover:text-red-200 flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4" /> Retry
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {resultSection && !isLoading && !error && (
-              <motion.div
-                key="result"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="w-full max-w-3xl"
-              >
-                <SectionCard
-                  section={resultSection}
-                  onClick={() => setSelectedSection(resultSection)}
-                />
-              </motion.div>
-            )}
-
-            {!resultSection && !isLoading && !error && (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="w-full"
-              >
-                <div className="bg-surface-glass-strong border border-line rounded-xl p-12 flex flex-col items-center justify-center text-center max-w-3xl mx-auto mb-12">
-                  <Scale className="w-12 h-12 text-fg-faint mb-4" />
-                  <p className="text-fg-subtle text-lg">Search an IPC section to view its BNS equivalent.</p>
-                </div>
-                
-                <div>
-                  <h3 className="text-xl font-display font-semibold text-fg mb-6">Sample Sections</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {SAMPLE_SECTIONS.map(section => (
-                      <SectionCard 
-                        key={section.id} 
-                        section={section} 
-                        onClick={() => setSelectedSection(section)} 
-                      />
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </main>
-
-      <AnimatePresence>
-        {selectedSection && (
-          <MappingDrawer
-            section={selectedSection}
-            onClose={() => setSelectedSection(null)}
-          />
-        )}
-      </AnimatePresence>
+    <div className="border-t border-line py-3.5 sm:grid sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-6">
+      <dt className="t-label pt-0.5 text-fg-subtle">{label}</dt>
+      <dd className="t-body mt-1 text-fg-muted sm:mt-0">{children}</dd>
     </div>
   );
 }
 
-export default Mapping;
+function CopyCitationButton({ result }: { result: MappingResult }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number>(0);
+
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+
+  const citation = result.bnsSection
+    ? `IPC ${result.ipcSection} → BNS ${result.bnsSection}${result.bnsTitle ? ` — ${result.bnsTitle}` : ''}`
+    : `IPC ${result.ipcSection} — no direct BNS successor`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(citation);
+      setCopied(true);
+      window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard blocked — the text is on screen and selectable anyway */
+    }
+  };
+
+  return (
+    <button
+      onClick={copy}
+      className={buttonClass({ variant: 'ghost', size: 'sm' })}
+      aria-label={`Copy citation: ${citation}`}
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-affirm" aria-hidden="true" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+      {copied ? 'Copied' : 'Copy citation'}
+    </button>
+  );
+}
+
+/** The authoritative view of one lookup. */
+function MappingRecord({ result }: { result: MappingResult }) {
+  if (result.outcome === 'unindexed') {
+    return (
+      <div className="card p-6 md:p-8">
+        <p className="badge badge-neutral">Not in the index</p>
+        <h2 className="t-h2 lum-heading mt-4">
+          IPC {result.ipcSection} isn’t in the mapping table
+        </h2>
+        <p className="t-body mt-3 max-w-xl text-fg-muted">
+          The index covers the sections most often cited in FIRs and judgments, not the entire code.
+          Check the number for a typo — or put the provision to the assistant, which searches the
+          full statute corpus rather than this table.
+        </p>
+        <Link to="/chat" className={buttonClass({ variant: 'primary', className: 'mt-6' })}>
+          <MessageSquare className="h-4 w-4" aria-hidden="true" />
+          Ask about IPC {result.ipcSection}
+        </Link>
+      </div>
+    );
+  }
+
+  const noEquivalent = result.outcome === 'no-equivalent';
+
+  return (
+    <article className="card overflow-hidden">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-6 md:p-8">
+        <div className="min-w-0">
+          <SectionMappingRow
+            ipcSection={result.ipcSection}
+            bnsSection={result.bnsSection}
+            size="lg"
+          />
+          <h2 className="t-h2 lum-heading mt-4">{result.ipcTitle}</h2>
+        </div>
+        <CopyCitationButton result={result} />
+      </header>
+
+      <div className="p-6 md:p-8">
+        {noEquivalent && (
+          <p className="mb-6 flex items-start gap-2.5 rounded-md border border-line-2 bg-surface-2 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-fg-muted">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-past" aria-hidden="true" />
+            This provision was not carried into the Bharatiya Nyaya Sanhita under a section number
+            of its own. Its subject matter may be covered elsewhere in the new code, or dropped
+            entirely.
+          </p>
+        )}
+
+        <dl className="[&>div:first-child]:border-t-0">
+          {result.bnsSection && (
+            <RecordField label="Now reads as">
+              <span className="text-fg">BNS section {result.bnsSection}</span>
+              {/* For sections without a reviewed note both the heading and this
+                  line fall back to the API description; don't print it twice. */}
+              {result.bnsTitle && result.bnsTitle !== result.ipcTitle && (
+                <span> — {result.bnsTitle}</span>
+              )}
+            </RecordField>
+          )}
+          <RecordField label="Punishment">{result.punishment}</RecordField>
+          <RecordField label="Nature">
+            {result.cognizable === undefined ? undefined : (
+              <span className={result.cognizable ? 'badge badge-caution' : 'badge badge-neutral'}>
+                {result.cognizable ? 'Cognizable' : 'Non-cognizable'}
+              </span>
+            )}
+          </RecordField>
+          <RecordField label="Bail">
+            {result.bailable === undefined ? undefined : (
+              <span className={result.bailable ? 'badge badge-affirm' : 'badge badge-danger'}>
+                {result.bailable ? 'Bailable' : 'Non-bailable'}
+              </span>
+            )}
+          </RecordField>
+          <RecordField label="Note">{result.description}</RecordField>
+        </dl>
+
+        {!result.reviewed && (
+          <p className="t-sm mt-6 text-fg-subtle">
+            Punishment and bail details are shown only for sections with a reviewed note. Ask the
+            assistant for the statutory text of this provision.
+          </p>
+        )}
+
+        <div className="mt-7 flex flex-wrap gap-2.5 border-t border-line pt-6">
+          <Link
+            to={`/chat?q=${encodeURIComponent(
+              `Explain ${result.bnsSection ? `BNS section ${result.bnsSection}` : `IPC section ${result.ipcSection}`} in plain language.`,
+            )}`}
+            className={buttonClass({ variant: 'primary' })}
+          >
+            <MessageSquare className="h-4 w-4" aria-hidden="true" />
+            Explain this section
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export default function Mapping() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { status, result, error, recents, lookup, reset } = useSectionLookup();
+  const [value, setValue] = useState(() => searchParams.get('ipc') || '');
+  const requestedRef = useRef<string | null>(null);
+
+  useDocumentTitle(
+    result?.ipcSection ? `IPC ${result.ipcSection} → BNS · NyayaAI` : 'IPC → BNS lookup · NyayaAI',
+  );
+
+  /* Deep links and in-app links (?ipc=420) resolve on arrival, once each. */
+  useEffect(() => {
+    const requested = normalizeSectionInput(searchParams.get('ipc') || '');
+    if (!requested || requested === requestedRef.current) return;
+    requestedRef.current = requested;
+    setValue(requested);
+    void lookup(requested);
+  }, [searchParams, lookup]);
+
+  const run = (raw: string) => {
+    const section = normalizeSectionInput(raw);
+    if (!section) {
+      reset();
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    requestedRef.current = section;
+    setValue(section);
+    setSearchParams({ ipc: section }, { replace: true });
+    void lookup(section);
+  };
+
+  const reviewedSections = Object.entries(SECTION_NOTES);
+  const showIdleGuidance = status === 'idle';
+
+  return (
+    <div className="relative min-h-screen bg-ink text-fg">
+      <Backdrop />
+      <Navbar />
+
+      <main id="main-content" className="relative pb-24 pt-[calc(var(--nav-h)+3rem)]">
+        <div className="container-page">
+          <div className="max-w-2xl">
+            <p className="eyebrow">Section index</p>
+            <h1 className="t-h1 lum-heading mt-4">IPC → BNS lookup</h1>
+            <p className="t-lead mt-3">
+              Enter the section number as it appears in your document. Prefixes like “IPC” or “Sec.”
+              are fine.
+            </p>
+          </div>
+
+          {/* --------------------------------------------------------- Search */}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              run(value);
+            }}
+            className="mt-8 max-w-2xl"
+            role="search"
+          >
+            <label htmlFor="ipc-search" className="sr-only">
+              IPC section number
+            </label>
+            <div className="flex flex-col gap-2.5 sm:flex-row">
+              <div className="relative flex-1">
+                <Search
+                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle"
+                  aria-hidden="true"
+                />
+                <input
+                  id="ipc-search"
+                  value={value}
+                  onChange={(event) => setValue(event.target.value)}
+                  placeholder="e.g. 302, 420, 498A"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input input-icon-lg h-12 font-mono text-base"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={status === 'loading' || !value.trim()}
+                className={buttonClass({ variant: 'primary', size: 'lg' })}
+              >
+                {status === 'loading' && <span className="spinner" aria-hidden="true" />}
+                Find mapping
+              </button>
+            </div>
+          </form>
+
+          {/* Quick picks and recents share a row: both are one tap to a result. */}
+          <div className="mt-5 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="t-label mr-1 text-fg-subtle">Common</span>
+              {QUICK_PICKS.map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() => run(section)}
+                  className={`chip font-mono ${result?.ipcSection === section ? 'chip-active' : ''}`}
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
+
+            {recents.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="t-label mr-1 text-fg-subtle">Recent</span>
+                {recents.map((section) => (
+                  <button
+                    key={section}
+                    type="button"
+                    onClick={() => run(section)}
+                    className="chip font-mono"
+                  >
+                    {section}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* --------------------------------------------------------- Results */}
+          <div className="mt-10 max-w-3xl" aria-live="polite" aria-atomic="true">
+            <AnimatePresence mode="wait">
+              {status === 'loading' && (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="card p-6 md:p-8"
+                >
+                  <Skeleton className="h-7 w-56" />
+                  <Skeleton className="mt-4 h-8 w-3/4" />
+                  <div className="mt-8 space-y-3">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                  <span className="sr-only">Looking up section…</span>
+                </motion.div>
+              )}
+
+              {status === 'error' && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="card border-danger/25 p-6"
+                  role="alert"
+                >
+                  <p className="flex items-start gap-2.5 text-[0.9375rem] text-fg">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                    {error}
+                  </p>
+                  <button
+                    onClick={() => run(value)}
+                    className={buttonClass({ variant: 'secondary', size: 'sm', className: 'mt-4' })}
+                  >
+                    <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    Try again
+                  </button>
+                </motion.div>
+              )}
+
+              {status === 'done' && result && (
+                <motion.div
+                  key={result.id}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                >
+                  <MappingRecord result={result} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {showIdleGuidance && (
+              <div className="card">
+                <EmptyState
+                  icon={<Scale className="h-5 w-5" aria-hidden="true" />}
+                  title="No section looked up yet"
+                  description="Search a number above, or start from one of the sections below."
+                />
+              </div>
+            )}
+          </div>
+
+          {/* ------------------------------------------------- Reviewed sections */}
+          <section aria-labelledby="reviewed-heading" className="mt-16 max-w-3xl">
+            <h2 id="reviewed-heading" className="t-h3 text-fg">
+              Sections with a reviewed note
+            </h2>
+            <p className="t-sm mt-1.5 text-fg-subtle">
+              These carry punishment and bail details in addition to the mapping.
+            </p>
+
+            <ul className="mt-5 overflow-hidden rounded-lg border border-line">
+              {reviewedSections.map(([section, note], index) => (
+                <li key={section} className={index > 0 ? 'border-t border-line' : ''}>
+                  {/* Inset focus ring: the row is flush with a clipped
+                      container, which would crop an offset one. */}
+                  <button
+                    type="button"
+                    onClick={() => run(section)}
+                    className="group flex w-full items-center gap-4 bg-surface px-4 py-3.5 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:-outline-offset-2"
+                  >
+                    <span className="badge badge-past shrink-0">IPC {section}</span>
+                    <span className="t-sm min-w-0 flex-1 truncate text-fg-muted group-hover:text-fg">
+                      {note.ipcTitle}
+                    </span>
+                    <Search
+                      className="h-3.5 w-3.5 shrink-0 text-fg-subtle group-hover:text-gold"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}

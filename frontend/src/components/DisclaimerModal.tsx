@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { BrandMark } from './ui/BrandMark';
 
 export interface DisclaimerModalProps {
   ack: boolean;
@@ -8,41 +8,37 @@ export interface DisclaimerModalProps {
 }
 
 /**
- * Legal disclaimer modal shown before the user's first chat interaction.
- * Implements proper dialog accessibility: role, aria-modal, focus management.
+ * Shown once, before the first question.
+ *
+ * Deliberately plain: three short statements and one button. A legal disclaimer
+ * that looks like a marketing panel is easy to dismiss without reading.
  */
 export default function DisclaimerModal({ ack, onAccept }: DisclaimerModalProps) {
   const acceptBtnRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!ack) {
-      // Save the currently focused element to restore later
-      previousFocusRef.current = document.activeElement as HTMLElement;
-
-      // Focus the accept button after animation completes
-      const timer = setTimeout(() => {
-        acceptBtnRef.current?.focus();
-      }, 100);
-
-      // Trap focus within the modal
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Tab') {
-          // Only one focusable element, keep focus on it
-          e.preventDefault();
-          acceptBtnRef.current?.focus();
-        }
-      };
-
-      document.addEventListener('keydown', handleKeyDown);
-      return () => {
-        clearTimeout(timer);
-        document.removeEventListener('keydown', handleKeyDown);
-      };
-    } else {
-      // Restore focus when modal closes
+    if (ack) {
       previousFocusRef.current?.focus();
+      return;
     }
+
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const focusTimer = setTimeout(() => acceptBtnRef.current?.focus(), 80);
+
+    /* One focusable element, so Tab simply stays on it. */
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        acceptBtnRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [ack]);
 
   return (
@@ -52,50 +48,46 @@ export default function DisclaimerModal({ ack, onAccept }: DisclaimerModalProps)
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-background/85 p-4 backdrop-blur-sm"
+          transition={{ duration: 0.16 }}
+          className="scrim z-[10000] flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="disclaimer-title"
-          aria-describedby="disclaimer-description"
+          aria-describedby="disclaimer-body"
         >
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.96 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-            className="w-full max-w-md rounded-2xl border border-secondary/30 p-6 shadow-2xl glass-panel"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+            className="overlay-panel w-full max-w-md p-6"
           >
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-secondary/30 bg-secondary/10">
-                <Sparkles className="h-4 w-4 text-secondary" />
-              </div>
-              <h2
-                id="disclaimer-title"
-                className="text-lg font-semibold text-on-surface font-headline-lg-mobile"
-              >
-                Before you begin
-              </h2>
-            </div>
+            <BrandMark size="md" />
 
-            <div id="disclaimer-description">
-              <p className="mb-3 text-sm leading-relaxed text-on-surface-variant">
-                NyayaAI is an AI assistant that provides{' '}
-                <strong className="text-on-surface">general legal information</strong> about
-                Indian law for educational purposes. It is{' '}
-                <strong className="text-on-surface">not a lawyer</strong> and its responses may
-                be incomplete or inaccurate.
-              </p>
-              <p className="mb-5 text-sm leading-relaxed text-on-surface-variant">
-                Nothing here creates a lawyer-client relationship or constitutes legal advice.
-                For decisions about your specific situation, consult a qualified advocate.
-              </p>
-            </div>
+            <h2 id="disclaimer-title" className="t-h3 mt-4 text-fg">
+              Before you begin
+            </h2>
+
+            <ul id="disclaimer-body" className="mt-4">
+              {[
+                'NyayaAI gives general information about Indian law for understanding. It is not a lawyer and this is not legal advice.',
+                'Using it creates no lawyer–client relationship, and nothing you type here is privileged.',
+                'Answers can be incomplete or wrong. Check them against the provisions cited, and consult an advocate about your own situation.',
+              ].map((line) => (
+                <li
+                  key={line}
+                  className="border-t border-line py-3 text-[0.8125rem] leading-relaxed text-fg-muted"
+                >
+                  {line}
+                </li>
+              ))}
+            </ul>
 
             <button
               ref={acceptBtnRef}
               type="button"
               onClick={onAccept}
-              className="w-full rounded-xl bg-secondary py-2.5 font-semibold text-on-secondary transition-colors hover:bg-secondary-container focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="btn btn-primary btn-lg mt-6 w-full"
             >
               I understand
             </button>

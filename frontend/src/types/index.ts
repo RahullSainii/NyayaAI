@@ -56,17 +56,25 @@ export interface AuthContextType {
 
 /**
  * Legal section definition mapping IPC to BNS with details.
+ *
+ * `punishment`, `cognizable`, `bailable` and `description` are optional on
+ * purpose: the `/map` endpoint returns only a section number and a short
+ * description, so these are populated solely for sections that carry a reviewed
+ * editorial note (see `lib/sections.ts`). The UI omits absent fields rather than
+ * defaulting them — a guessed "Non-Bailable" badge would read as a statement of
+ * law the application cannot back up.
  */
 export interface LegalSection {
   id: number | string;
   ipcSection: string;
   ipcTitle: string;
+  /** Empty when the IPC provision has no numbered BNS successor. */
   bnsSection: string;
   bnsTitle: string;
-  punishment: string;
-  cognizable: boolean;
-  bailable: boolean;
-  description: string;
+  punishment?: string;
+  cognizable?: boolean;
+  bailable?: boolean;
+  description?: string;
 }
 
 /**

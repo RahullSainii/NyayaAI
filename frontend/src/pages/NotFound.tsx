@@ -1,49 +1,48 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Scale } from 'lucide-react';
+import { ArrowLeft, MessageSquare } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import { Backdrop } from '../components/ui/Backdrop';
+import { buttonClass } from '../components/ui/Button';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 export default function NotFound() {
+  useDocumentTitle('Page not found · NyayaAI');
+
   return (
-    <>
+    <div className="relative min-h-[100dvh] bg-ink">
+      <Backdrop />
       <Navbar />
-      <main className="flex min-h-screen flex-col items-center justify-center bg-ink px-8 text-center text-fg">
-        {/* Decorative background glow */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute left-1/2 top-1/3 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold-dim blur-[120px]" />
-        </div>
 
+      <main
+        id="main-content"
+        className="relative flex min-h-[100dvh] flex-col items-center justify-center px-5 text-center"
+      >
         <motion.div
-          initial={{ opacity: 0, y: 24 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="relative z-10 flex flex-col items-center"
+          transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+          className="max-w-md"
         >
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-gold-line bg-gold-dim">
-            <Scale className="h-10 w-10 text-gold" />
+          <p className="t-mono lum-metric">404</p>
+          <h1 className="t-h1 lum-heading mt-4">This page isn’t here</h1>
+          <p className="t-lead mt-3">
+            The link may be out of date. The two things you can do from anywhere are ask a question
+            and look up a section.
+          </p>
+
+          <div className="mt-8 flex flex-col justify-center gap-2.5 sm:flex-row">
+            <Link to="/chat" className={buttonClass({ variant: 'primary' })}>
+              <MessageSquare className="h-4 w-4" aria-hidden="true" />
+              Ask a question
+            </Link>
+            <Link to="/" className={buttonClass({ variant: 'secondary' })}>
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back home
+            </Link>
           </div>
-
-          <h1 className="font-display text-8xl font-extrabold tracking-tight text-gold sm:text-9xl">
-            404
-          </h1>
-
-          <p className="mt-3 text-xl font-medium text-fg sm:text-2xl">
-            Page not found
-          </p>
-
-          <p className="mt-2 max-w-md text-fg-muted leading-relaxed">
-            The page you&apos;re looking for doesn&apos;t exist or has been moved.
-          </p>
-
-          <Link
-            to="/"
-            className="primary-cta mt-8 gap-2.5 text-sm"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Home
-          </Link>
         </motion.div>
       </main>
-    </>
+    </div>
   );
 }

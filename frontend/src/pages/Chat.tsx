@@ -1,39 +1,53 @@
-import React, { useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, MessageSquare, Circle, Sparkles, Menu } from 'lucide-react';
-import ChatBubble from '../components/ChatBubble';
-import TypingIndicator from '../components/TypingIndicator';
-import ChatSidebar from '../components/ChatSidebar';
-import ChatInputArea from '../components/ChatInputArea';
-import DisclaimerModal from '../components/DisclaimerModal';
-import { SessionRow } from '../components/SessionRow';
-import { SessionContextMenu } from '../components/SessionContextMenu';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { PanelLeft, Plus, Share2 } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
+import ChatBubble from '../components/ChatBubble';
+import ChatInputArea from '../components/ChatInputArea';
+import ChatSidebar from '../components/ChatSidebar';
+import DisclaimerModal from '../components/DisclaimerModal';
+import SelectionToolbar from '../components/SelectionToolbar';
+import TypingIndicator from '../components/TypingIndicator';
+import { SessionContextMenu } from '../components/SessionContextMenu';
+import { SessionRow } from '../components/SessionRow';
+import { buttonClass } from '../components/ui/Button';
 
-import { useChatSessions } from '../hooks/useChatSessions';
-import { useStreamingReply } from '../hooks/useStreamingReply';
-import { useSpeechInput } from '../hooks/useSpeechInput';
 import { useAttachments } from '../hooks/useAttachments';
-import { useToast } from '../context/ToastContext';
+import { useChatSessions } from '../hooks/useChatSessions';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useSpeechInput } from '../hooks/useSpeechInput';
+import { useStreamingReply } from '../hooks/useStreamingReply';
+import { useToast } from '../context/ToastContext';
 import { useChatStore } from '../store/useChatStore';
 import type { ChatMessage, ChatSession } from '../types';
 
-const suggestions = [
-  { title: "What is IPC Section 302?", icon: MessageSquare },
-  { title: "Explain FIR filing process", icon: Bot },
-  { title: "IPC to BNS mapping for 498A", icon: Sparkles },
-  { title: "What are my bail rights?", icon: Circle },
+/**
+ * Opening prompts.
+ *
+ * Written as questions a person would actually arrive with, and grouped by the
+ * kind of help each one represents, so the empty state teaches what the
+ * assistant is for instead of listing keywords.
+ */
+const OPENERS: Array<{ kind: string; question: string }> = [
+  { kind: 'Translate a section', question: 'What replaced IPC section 302 in the BNS?' },
+  { kind: 'Understand a procedure', question: 'How do I file an FIR, and what if the police refuse?' },
+  { kind: 'Know your position', question: 'When is an offence bailable, and who decides?' },
+  { kind: 'Read a provision', question: 'Explain BNS section 85 in plain language.' },
 ];
 
 export default function Chat() {
   const { showToast } = useToast();
-  
-  const { 
-    input, setInput, 
-    isLoading, 
-    sidebarOpen, setSidebarOpen, 
-    disclaimerAck, acceptDisclaimer 
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const {
+    input,
+    setInput,
+    isLoading,
+    sidebarOpen,
+    setSidebarOpen,
+    disclaimerAck,
+    acceptDisclaimer,
   } = useChatStore();
 
   const {
@@ -65,25 +79,15 @@ export default function Chat() {
     persistSessions,
   } = useChatSessions();
 
-  useDocumentTitle(chatTitle);
+  useDocumentTitle(`${chatTitle} · NyayaAI`);
 
-  const {
-    streamAssistantReply,
-    buildHistory,
-    handleRegenerate,
-  } = useStreamingReply(messages, setMessages);
-
-
-  const {
-    isRecording,
-    recordingNotSupported,
-    toggleRecording,
-    speechBaseRef,
-    finalTranscriptRef,
-  } = useSpeechInput(
-    input,
-    (value) => setInput(typeof value === 'function' ? value(input) : value)
+  const { streamAssistantReply, buildHistory, handleRegenerate } = useStreamingReply(
+    messages,
+    setMessages,
   );
+
+  const { isRecording, recordingNotSupported, toggleRecording, speechBaseRef, finalTranscriptRef } =
+    useSpeechInput(input, (value) => setInput(typeof value === 'function' ? value(input) : value));
 
   const {
     attachments,
@@ -94,26 +98,34 @@ export default function Chat() {
     removeAttachment,
   } = useAttachments();
 
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerFilledRef = useRef(false);
 
+  /* A question handed over from another page (?q=…) is placed in the composer
+     rather than sent, so the user stays in control of what gets asked. */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+    const handoff = searchParams.get('q');
+    if (!handoff || composerFilledRef.current) return;
+    composerFilledRef.current = true;
+    setInput(handoff);
+    setSearchParams({}, { replace: true });
+    textareaRef.current?.focus();
+  }, [searchParams, setInput, setSearchParams]);
 
   useEffect(() => {
     persistSessions(isLoading);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, chatSessions, isLoading]);
 
+  /* Grow the composer with its content, up to the max height set in CSS. */
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
-    }
+    const node = textareaRef.current;
+    if (!node) return;
+    node.style.height = 'auto';
+    node.style.height = `${Math.min(node.scrollHeight, 144)}px`;
   }, [input]);
 
-  const customShareSession = async (id: number | string) => {
+  const shareSession = async (id: number | string) => {
     setMenu(null);
     const active = chatSessions.find((s) => s.active);
     const msgs = active && active.id === id ? messages : sessionMessagesRef.current[id] || [];
@@ -121,26 +133,26 @@ export default function Chat() {
       .filter((m) => !m.welcome && m.content && m.content.trim())
       .map((m) => `${m.role === 'user' ? 'You' : 'NyayaAI'}: ${m.content}`)
       .join('\n\n');
-    
+
     if (!transcript) {
-      showToast('No messages to share.', 'info');
+      showToast('This conversation is still empty.', 'info');
       return;
     }
-    
+
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'NyayaAI Conversation', text: transcript });
+        await navigator.share({ title: 'NyayaAI conversation', text: transcript });
         return;
       }
     } catch {
-      /* user cancelled or failed -> fall through to clipboard */
+      /* cancelled — fall through to clipboard */
     }
-    
+
     try {
       await navigator.clipboard.writeText(transcript);
-      showToast('Conversation copied to clipboard.', 'success');
+      showToast('Transcript copied to your clipboard.', 'success');
     } catch {
-      showToast('Failed to copy conversation.', 'error');
+      showToast('Could not copy the transcript.', 'error');
     }
   };
 
@@ -150,8 +162,9 @@ export default function Chat() {
     const image = attachments.find((a) => a.imageData);
     const ready = attachments.filter((a) => a.content || a.imageData);
     if ((!trimmed && ready.length === 0) || isLoading) return;
+
     if (attachments.some((a) => a.loading)) {
-      showToast('Please wait for attachments to finish processing.', 'info');
+      showToast('Still reading your attachment — one moment.', 'info');
       return;
     }
 
@@ -160,7 +173,10 @@ export default function Chat() {
 
     const MAX_ATTACH_TEXT_CHARS = 24000;
     const attachmentText = docs.length
-      ? docs.map((a) => `--- ${a.name} ---\n${a.content}`).join('\n\n').slice(0, MAX_ATTACH_TEXT_CHARS)
+      ? docs
+          .map((a) => `--- ${a.name} ---\n${a.content}`)
+          .join('\n\n')
+          .slice(0, MAX_ATTACH_TEXT_CHARS)
       : '';
 
     const queryToSend =
@@ -174,18 +190,15 @@ export default function Chat() {
     const note = ready.length ? `${trimmed ? '\n\n' : ''}[Attached: ${allNames}]` : '';
     const displayContent = `${trimmed}${note}`.trim() || `[Attached: ${allNames}]`;
 
-    const userMessage: ChatMessage = { 
-      id: crypto.randomUUID(), 
-      role: 'user', 
-      content: displayContent 
-    };
-    
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: 'user', content: displayContent } as ChatMessage,
+    ]);
 
     if (activeSession && activeSession.title === 'New Conversation') {
       const seed = (trimmed || ready[0]?.name || 'New Conversation').slice(0, 50);
       setChatSessions((prev) =>
-        prev.map((s) => (s.id === activeSession.id ? { ...s, title: seed } : s))
+        prev.map((s) => (s.id === activeSession.id ? { ...s, title: seed } : s)),
       );
     }
 
@@ -193,7 +206,7 @@ export default function Chat() {
     setAttachments([]);
     speechBaseRef.current = '';
     finalTranscriptRef.current = '';
-    
+
     streamAssistantReply(queryToSend, history, {
       attachmentText,
       attachmentName: allNames,
@@ -204,7 +217,6 @@ export default function Chat() {
   };
 
   const handleSend = () => sendMessage(input);
-  const handleSuggestionClick = (text: string) => sendMessage(text);
 
   const handleBranch = (messageIndex: number) => {
     const newId = Date.now();
@@ -212,11 +224,9 @@ export default function Chat() {
 
     setChatSessions((prev) => {
       const currentActive = prev.find((s) => s.active);
-      if (currentActive) {
-        sessionMessagesRef.current[currentActive.id] = messages;
-      }
+      if (currentActive) sessionMessagesRef.current[currentActive.id] = messages;
       return [
-        { id: newId, title: 'Branched Chat', active: true },
+        { id: newId, title: 'Branched conversation', active: true },
         ...prev.map((session) => ({ ...session, active: false })),
       ];
     });
@@ -224,7 +234,7 @@ export default function Chat() {
     sessionMessagesRef.current[newId] = branchMessages;
     setMessages(branchMessages);
     setInput('');
-    showToast('Branched into a new conversation.', 'success');
+    showToast('Continuing in a new conversation.', 'success');
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -235,8 +245,14 @@ export default function Chat() {
   };
 
   const handleAskAbout = (selectedText: string) => {
-    const query = `Regarding: "${selectedText}"\n\nTell me more about this.`;
-    sendMessage(query);
+    sendMessage(`About this passage: "${selectedText}"\n\nExplain it further.`);
+  };
+
+  const startNewChat = () => {
+    handleNewChat();
+    setInput('');
+    speechBaseRef.current = '';
+    finalTranscriptRef.current = '';
   };
 
   const renderSessionRow = useCallback(
@@ -254,142 +270,210 @@ export default function Chat() {
         onMenuOpen={(e, id) => openMenu(e as unknown as React.MouseEvent<HTMLElement>, id)}
       />
     ),
-    [renamingId, renameValue, setRenameValue, commitRename, cancelRename, handleSelectSession, openMenu]
+    [
+      renamingId,
+      renameValue,
+      setRenameValue,
+      commitRename,
+      cancelRename,
+      handleSelectSession,
+      openMenu,
+    ],
   );
 
-  return (
-    <div className="flex h-screen bg-background overflow-hidden relative">
-      <DisclaimerModal ack={disclaimerAck} onAccept={acceptDisclaimer} />
+  /* The canned greeting is kept in state (sessions persist it) but never
+     rendered: the empty state already says what the assistant is for, and
+     showing both put two overlapping introductions on screen. */
+  const visibleMessages = messages.filter((m) => !m.welcome);
+  const isEmptyThread = visibleMessages.length === 0;
+  const exchangeCount = visibleMessages.filter((m) => m.role === 'user').length;
+  const lastVisible = visibleMessages[visibleMessages.length - 1];
 
+  return (
+    <div className="flex h-[100dvh] overflow-hidden bg-ink">
+      <DisclaimerModal ack={disclaimerAck} onAccept={acceptDisclaimer} />
+      <SelectionToolbar onAskAbout={handleAskAbout} />
+
+      {/* Scrim for the off-canvas sidebar, below lg only */}
       <AnimatePresence>
         {sidebarOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-30"
-            />
-            <ChatSidebar
-              handleNewChat={() => {
-                handleNewChat();
-                setInput('');
-                speechBaseRef.current = '';
-                finalTranscriptRef.current = '';
-              }}
-              recentSessions={recentSessions}
-              archivedSessions={archivedSessions}
-              renderSessionRow={renderSessionRow}
-              showArchived={showArchived}
-              setShowArchived={setShowArchived}
-            />
-          </>
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close conversations"
+            className="scrim z-40 lg:hidden"
+          />
         )}
       </AnimatePresence>
 
-      <main id="main-content" className="flex-1 flex flex-col relative min-w-0">
-        <header className="h-14 shrink-0 flex items-center px-4 justify-between md:justify-end border-b border-surface">
+      <ChatSidebar
+        handleNewChat={startNewChat}
+        recentSessions={recentSessions}
+        archivedSessions={archivedSessions}
+        renderSessionRow={renderSessionRow}
+        showArchived={showArchived}
+        setShowArchived={setShowArchived}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* ------------------------------------------------------------ Header */}
+        <header className="flex h-[var(--nav-h)] shrink-0 items-center gap-3 border-b border-line px-3 md:px-4">
           {!sidebarOpen && (
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 -ml-2 rounded-lg text-on-surface hover:bg-surface transition-colors"
-              aria-label="Open sidebar"
+              aria-label="Show conversations"
+              aria-controls="chat-sidebar"
+              aria-expanded={sidebarOpen}
+              className={buttonClass({ variant: 'ghost', size: 'sm', iconOnly: true })}
             >
-              <Menu className="w-[24px] h-[24px]" />
+              <PanelLeft className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
+
+          <div className="min-w-0 flex-1">
+            <h1 className="t-ui truncate text-fg">{chatTitle}</h1>
+            <p className="t-xs text-fg-subtle">
+              {exchangeCount === 0
+                ? 'Nothing asked yet'
+                : `${exchangeCount} question${exchangeCount > 1 ? 's' : ''} in this thread`}
+            </p>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            {activeSession && exchangeCount > 0 && (
+              <button
+                onClick={() => shareSession(activeSession.id)}
+                className={buttonClass({ variant: 'ghost', size: 'sm' })}
+              >
+                <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Copy transcript</span>
+              </button>
+            )}
+            <button onClick={startNewChat} className={buttonClass({ variant: 'secondary', size: 'sm' })}>
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">New</span>
+            </button>
+          </div>
         </header>
 
-          <div className="flex-1 min-h-0 relative">
+        {/* ------------------------------------------------------------ Thread */}
+        <main id="main-content" className="relative min-h-0 flex-1">
+          {isEmptyThread ? (
+            <div className="h-full overflow-y-auto">
+              <div className="mx-auto w-full max-w-[46rem] px-4 py-12 md:py-16">
+                <p className="eyebrow">Start here</p>
+                <h2 className="t-h2 lum-heading mt-4">What would you like to know?</h2>
+                <p className="t-lead mt-3 max-w-lg">
+                  Ask in plain language. Answers come back with the provisions they were drawn from,
+                  so you can check them.
+                </p>
+
+                <ul className="mt-8 overflow-hidden rounded-lg border border-line">
+                  {OPENERS.map((opener, index) => (
+                    <li key={opener.question} className={index > 0 ? 'border-t border-line' : ''}>
+                      {/* Inset focus ring: these rows sit flush against a
+                          clipped container, which would crop an offset one. */}
+                      <button
+                        onClick={() => sendMessage(opener.question)}
+                        className="group flex w-full flex-col gap-1 bg-surface px-4 py-3.5 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:-outline-offset-2"
+                      >
+                        <span className="t-label text-fg-subtle">{opener.kind}</span>
+                        <span className="text-[0.9375rem] text-fg-muted group-hover:text-fg">
+                          {opener.question}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                <p className="t-sm mt-6 text-fg-subtle">
+                  You can also attach a document or a photo of a notice and ask about it.
+                </p>
+              </div>
+            </div>
+          ) : (
             <Virtuoso
-              className="w-full h-full"
-              data={messages}
-              initialTopMostItemIndex={messages.length - 1}
+              className="h-full w-full"
+              data={visibleMessages}
+              initialTopMostItemIndex={visibleMessages.length - 1}
               followOutput="smooth"
-              itemContent={(index, message) => (
-                <div className="max-w-3xl mx-auto px-4 py-3">
-                  <ChatBubble
-                    key={message.id || `msg-${index}`}
-                    message={message}
-                    onRegenerate={
-                      message.role === 'ai' && message === messages[messages.length - 1]
-                        ? handleRegenerate
-                        : undefined
-                    }
-                    onBranch={
-                      message.role === 'user'
-                        ? () => handleBranch(messages.indexOf(message))
-                        : undefined
-                    }
-                    onAskAbout={handleAskAbout}
-                  />
-                </div>
-              )}
+              itemContent={(index, message) => {
+                const isLast = index === visibleMessages.length - 1;
+                const isAnswer = message.role !== 'user';
+                /* Extra air above each question, less between a question and
+                   its answer: the pair reads as one exchange rather than the
+                   thread reading as an evenly spaced list. */
+                const spacing = isAnswer ? 'pt-2 pb-3' : index === 0 ? 'pt-6 pb-2' : 'pt-9 pb-2';
+                return (
+                  <div className={`mx-auto w-full max-w-[46rem] px-4 ${spacing}`}>
+                    <ChatBubble
+                      key={message.id || `msg-${index}`}
+                      message={message}
+                      /* The question this answers, for the PDF export header. */
+                      question={
+                        isAnswer
+                          ? [...visibleMessages.slice(0, index)]
+                              .reverse()
+                              .find((m) => m.role === 'user')?.content
+                          : undefined
+                      }
+                      isStreaming={isLoading && isLast && isAnswer}
+                      onRegenerate={isAnswer && isLast && !isLoading ? handleRegenerate : undefined}
+                      /* Branching splits the real message list, so map back to
+                         the unfiltered index rather than the rendered one. */
+                      onBranch={
+                        message.role === 'user'
+                          ? () => handleBranch(messages.indexOf(message))
+                          : undefined
+                      }
+                    />
+                  </div>
+                );
+              }}
               components={{
                 Footer: () => (
-                  <div className="max-w-3xl mx-auto px-4 space-y-6 pb-6">
-                    {isLoading && <TypingIndicator />}
-                    {messages.length === 1 && messages[0].welcome && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-8"
-                      >
-                        {suggestions.map((suggestion, index) => {
-                          const Icon = suggestion.icon;
-                          return (
-                            <button
-                              key={index}
-                              onClick={() => handleSuggestionClick(suggestion.title)}
-                              className="flex items-center gap-3 p-4 rounded-xl border border-surface bg-surface/30 hover:bg-surface/60 transition-colors text-left"
-                            >
-                              <div className="p-2 rounded-lg bg-secondary/10 text-secondary">
-                                <Icon className="w-5 h-5" />
-                              </div>
-                              <span className="text-sm font-medium text-on-surface">
-                                {suggestion.title}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                    <div ref={messagesEndRef} />
+                  <div className="mx-auto w-full max-w-[46rem] px-4 pb-8">
+                    {isLoading && lastVisible?.role === 'user' && <TypingIndicator />}
                   </div>
-                )
+                ),
               }}
             />
-          </div>
+          )}
 
-        <div className="p-4 bg-gradient-to-t from-background via-background to-transparent shrink-0">
-          <div className="max-w-3xl mx-auto">
-            <ChatInputArea
-              handleKeyDown={handleKeyDown}
-              handleSend={handleSend}
-              attachments={attachments}
-              handleAttachClick={handleAttachClick}
-              handleFilesSelected={handleFilesSelected}
-              removeAttachment={removeAttachment}
-              isRecording={isRecording}
-              recordingNotSupported={recordingNotSupported}
-              toggleRecording={toggleRecording}
-              textareaRef={textareaRef}
-              fileInputRef={fileInputRef}
-            />
-            <div className="text-center mt-3 text-xs text-on-surface-variant font-medium">
-              NyayaAI can make mistakes. Consider verifying important legal information.
-            </div>
-          </div>
-        </div>
-      </main>
+          {/* Streamed text is announced once it settles, not token by token. */}
+          <p aria-live="polite" aria-atomic="true" className="sr-only">
+            {isLoading
+              ? 'NyayaAI is preparing an answer.'
+              : lastVisible && lastVisible.role !== 'user'
+                ? 'Answer ready.'
+                : ''}
+          </p>
+        </main>
+
+        <ChatInputArea
+          handleKeyDown={handleKeyDown}
+          handleSend={handleSend}
+          attachments={attachments}
+          handleAttachClick={handleAttachClick}
+          handleFilesSelected={handleFilesSelected}
+          removeAttachment={removeAttachment}
+          isRecording={isRecording}
+          recordingNotSupported={recordingNotSupported}
+          toggleRecording={toggleRecording}
+          textareaRef={textareaRef}
+          fileInputRef={fileInputRef}
+        />
+      </div>
 
       {menu && (
         <SessionContextMenu
-          session={chatSessions.find(s => s.id === menu.id)!}
+          session={chatSessions.find((s) => s.id === menu.id)!}
           position={menu}
           onClose={() => setMenu(null)}
-          onShare={customShareSession}
+          onShare={shareSession}
           onRename={startRename}
           onTogglePin={togglePin}
           onToggleArchive={toggleArchive}

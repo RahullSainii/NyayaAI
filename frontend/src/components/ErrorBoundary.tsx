@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, type CSSProperties, type ErrorInfo, type ReactNode } from 'react';
 import * as Sentry from '@sentry/react';
 
 interface ErrorBoundaryProps {
@@ -11,12 +11,13 @@ interface ErrorBoundaryState {
 }
 
 /**
- * React Error Boundary — catches render-phase crashes in any child tree
- * and shows a recovery UI instead of a blank white screen.
+ * Catches render-phase crashes anywhere below it and shows a recovery screen
+ * instead of a blank page.
  *
- * Uses CSS custom properties so the fallback renders correctly even if
- * Tailwind/PostCSS fails to load. This is intentional — the error boundary
- * is the last line of defense and must be self-contained.
+ * Styled with inline styles and literal colour values on purpose: this is the
+ * last line of defence, so it must render correctly even if the stylesheet
+ * itself failed to load. Token names are used where available, with the design
+ * system's values as fallbacks.
  */
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
@@ -37,142 +38,131 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     this.setState({ hasError: false, error: null });
   };
 
-  handleRefresh = () => {
+  handleReload = () => {
     window.location.reload();
   };
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <main
-          role="alert"
-          aria-live="assertive"
+    if (!this.state.hasError) return this.props.children;
+
+    const buttonBase: CSSProperties = {
+      height: '2.625rem',
+      padding: '0 1rem',
+      borderRadius: '9px',
+      fontSize: '0.875rem',
+      fontWeight: 600,
+      cursor: 'pointer',
+      border: 0,
+    };
+
+    return (
+      <main
+        role="alert"
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+          background: 'var(--color-ink, #07080e)',
+          color: 'var(--color-fg, #eef0f6)',
+          fontFamily: 'var(--font-body, system-ui, sans-serif)',
+          padding: '2rem',
+          maxWidth: '34rem',
+          marginInline: 'auto',
+        }}
+      >
+        <p
           style={{
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--color-ink, #060910)',
-            color: 'var(--color-fg, #f0f2f8)',
-            fontFamily: 'var(--font-body, system-ui, sans-serif)',
-            padding: '2rem',
-            textAlign: 'center',
+            fontFamily: 'var(--font-mono, monospace)',
+            fontSize: '0.6875rem',
+            letterSpacing: '0.11em',
+            textTransform: 'uppercase',
+            color: 'var(--color-fg-subtle, #7d8499)',
           }}
         >
-          {/* Decorative glow */}
-          <div
+          Something broke
+        </p>
+
+        <h1
+          style={{
+            fontFamily: 'var(--font-display, Georgia, serif)',
+            fontSize: '1.75rem',
+            fontWeight: 600,
+            lineHeight: 1.15,
+            letterSpacing: '-0.02em',
+            margin: 0,
+          }}
+        >
+          This screen failed to load
+        </h1>
+
+        <p
+          style={{
+            color: 'var(--color-fg-muted, #a4abbf)',
+            lineHeight: 1.65,
+            fontSize: '0.9375rem',
+            margin: 0,
+          }}
+        >
+          Reloading usually clears it. Nothing you had saved has been lost — conversations are kept
+          on this device.
+        </p>
+
+        {this.state.error && (
+          <details
             style={{
-              position: 'absolute',
-              width: '300px',
-              height: '300px',
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(212,166,78,0.08), transparent 70%)',
-              filter: 'blur(60px)',
-              pointerEvents: 'none',
+              width: '100%',
+              marginTop: '0.5rem',
+              padding: '0.875rem',
+              borderRadius: '9px',
+              border: '1px solid var(--color-line, #1c2032)',
+              background: 'var(--color-surface, #10121d)',
+              fontSize: '0.8125rem',
+              color: 'var(--color-fg-muted, #a4abbf)',
             }}
-          />
-
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <h1
+          >
+            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Technical detail</summary>
+            <code
               style={{
-                fontSize: '2rem',
-                fontFamily: 'var(--font-display, Georgia, serif)',
-                fontWeight: 600,
-                marginBottom: '0.75rem',
-                color: 'var(--color-gold, #d4a64e)',
+                display: 'block',
+                marginTop: '0.625rem',
+                fontFamily: 'var(--font-mono, monospace)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: 'var(--color-fg-subtle, #7d8499)',
               }}
             >
-              Something went wrong
-            </h1>
+              {this.state.error.message}
+            </code>
+          </details>
+        )}
 
-            <p
-              style={{
-                color: 'var(--color-fg-muted, #9aa4be)',
-                maxWidth: '480px',
-                lineHeight: 1.7,
-                marginBottom: '2rem',
-                fontSize: '0.95rem',
-              }}
-            >
-              An unexpected error occurred. Please try refreshing the page.
-              If the problem persists, clear your browser cache and try again.
-            </p>
-
-            {this.state.error && (
-              <details
-                style={{
-                  maxWidth: '480px',
-                  marginBottom: '1.5rem',
-                  textAlign: 'left',
-                  padding: '1rem',
-                  borderRadius: '12px',
-                  border: '1px solid var(--color-line, #1e2a4a)',
-                  background: 'var(--color-surface, #131a2e)',
-                  fontSize: '0.8rem',
-                  color: 'var(--color-fg-muted, #9aa4be)',
-                }}
-              >
-                <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  Error details
-                </summary>
-                <code style={{ fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                  {this.state.error.message}
-                </code>
-              </details>
-            )}
-
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <button
-                onClick={this.handleRefresh}
-                style={{
-                  padding: '0.85rem 2rem',
-                  borderRadius: '999px',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, var(--color-gold-bright, #f5e0a0), var(--color-gold, #d4a64e))',
-                  color: 'var(--color-ink, #060910)',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                }}
-                onMouseOver={(e) => {
-                  (e.target as HTMLButtonElement).style.transform = 'translateY(-2px)';
-                }}
-                onMouseOut={(e) => {
-                  (e.target as HTMLButtonElement).style.transform = 'translateY(0)';
-                }}
-              >
-                Refresh Page
-              </button>
-              <button
-                onClick={this.handleReset}
-                style={{
-                  padding: '0.85rem 2rem',
-                  borderRadius: '999px',
-                  border: '1px solid var(--color-line, #1e2a4a)',
-                  background: 'transparent',
-                  color: 'var(--color-fg-muted, #9aa4be)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                  transition: 'border-color 0.15s ease',
-                }}
-                onMouseOver={(e) => {
-                  (e.target as HTMLButtonElement).style.borderColor = 'var(--color-gold-line, rgba(212,166,78,0.28))';
-                }}
-                onMouseOut={(e) => {
-                  (e.target as HTMLButtonElement).style.borderColor = 'var(--color-line, #1e2a4a)';
-                }}
-              >
-                Try Again
-              </button>
-            </div>
-          </div>
-        </main>
-      );
-    }
-
-    return this.props.children;
+        <div style={{ display: 'flex', gap: '0.625rem', marginTop: '1.25rem' }}>
+          <button
+            onClick={this.handleReload}
+            style={{
+              ...buttonBase,
+              background: 'var(--color-gold, #d9a94a)',
+              color: '#14100a',
+            }}
+          >
+            Reload the page
+          </button>
+          <button
+            onClick={this.handleReset}
+            style={{
+              ...buttonBase,
+              background: 'var(--color-surface-2, #161927)',
+              color: 'var(--color-fg, #eef0f6)',
+              boxShadow: 'inset 0 0 0 1px var(--color-line-2, #282d43)',
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      </main>
+    );
   }
 }

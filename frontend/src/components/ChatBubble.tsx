@@ -1,15 +1,28 @@
-import React, { useEffect, useRef, useState, useMemo, ReactNode, memo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { memo, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  FileText, Copy, Check, ThumbsUp, ThumbsDown,
-  Share2, RefreshCw, Volume2, VolumeX, GitBranch,
-  MessageSquare, Globe, ExternalLink, Image as ImageIcon
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  FileText,
+  GitBranch,
+  Globe,
+  Image as ImageIcon,
+  RefreshCw,
+  Share2,
+  ThumbsDown,
+  ThumbsUp,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
-import logo from '../assets/nyaya.jpeg';
 import { ChatMessage, ChatSource } from '../types';
+import { BrandMark } from './ui/BrandMark';
+import { exportAnswerToPdf } from '../lib/exportAnswer';
+import { toPlainText, toSpokenText } from '../lib/text';
 
 const isWebSource = (source: string | ChatSource): boolean =>
   typeof source === 'object' && source !== null && source.law_type === 'WEB';
@@ -27,7 +40,6 @@ const formatSourceLabel = (source: string | ChatSource): string => {
   if (!source) return 'Unknown source';
 
   if (isWebSource(source)) {
-    // For web results, prefer the page title, falling back to the domain.
     return source.section || hostFromUrl(source.url) || 'Web source';
   }
 
@@ -39,174 +51,47 @@ const formatSourceLabel = (source: string | ChatSource): string => {
 };
 
 const SOURCE_BADGES: Record<string, { icon: React.ElementType; label: string; cls: string }> = {
-  web: { icon: Globe, label: 'Web', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/30' },
-  document: { icon: FileText, label: 'Document', cls: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' },
-  image: { icon: ImageIcon, label: 'Image', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' },
+  web: { icon: Globe, label: 'Web', cls: 'badge-neutral' },
+  document: { icon: FileText, label: 'Your document', cls: 'badge-neutral' },
+  image: { icon: ImageIcon, label: 'Your image', cls: 'badge-neutral' },
 };
 
+/** Says where the answer was grounded, when that is not the statute corpus. */
 function SourceBadge({ sourceType }: { sourceType?: string }) {
   if (!sourceType) return null;
   const badge = SOURCE_BADGES[sourceType];
   if (!badge) return null;
   const Icon = badge.icon;
+
   return (
-    <span
-      title={`Answer based on: ${badge.label}`}
-      className={`flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full border ${badge.cls}`}
-    >
-      <Icon className="w-3 h-3" />
+    <span className={`badge ${badge.cls}`}>
+      <Icon className="h-3 w-3" aria-hidden="true" />
       {badge.label}
     </span>
   );
 }
 
-/* Strip markdown so copy / share / read-aloud get clean, natural text */
-const toPlainText = (text = ''): string =>
-  text
-    .replace(/^#{1,6}\s+/gm, '')            // headings
-    .replace(/^\s*[-*]\s+/gm, '')            // bullet markers
-    .replace(/^\s*\d+\.\s+/gm, '')           // numbered list markers
-    .replace(/\|/g, ' ')                     // table pipes
-    .replace(/`{1,3}([^`]+)`{1,3}/g, '$1')   // code
-    .replace(/\*\*([^*]+)\*\*/g, '$1')       // bold
-    .replace(/\[(\d+)\]/g, '')               // [1] citation refs
-    .replace(/\n{2,}/g, '. ')                // paragraph breaks -> pause
-    .replace(/[ \t]+/g, ' ')
-    .trim();
-
-function TextSelectionToolbar({ onAskAbout }: { onAskAbout?: (text: string) => void }) {
-  const [selection, setSelection] = useState<string | null>(null);
-  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-  const [copiedSel, setCopiedSel] = useState<boolean>(false);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const handleMouseUp = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-        setSelection(null);
-        return;
-      }
-
-      const text = sel.toString().trim();
-      if (text.length < 3) {
-        setSelection(null);
-        return;
-      }
-
-      const range = sel.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-
-      // Prefer showing above the selection; if there's no room, show below.
-      const above = rect.top - 52;
-      const top = above < 8 ? rect.bottom + 12 : above;
-      const left = Math.min(
-        Math.max(rect.left + rect.width / 2, 90),
-        window.innerWidth - 90,
-      );
-
-      setPosition({ top, left });
-      setSelection(text);
-    };
-
-    const handleMouseDown = (e: MouseEvent) => {
-      if (toolbarRef.current && toolbarRef.current.contains(e.target as Node)) return;
-    };
-
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mousedown', handleMouseDown);
-    };
-  }, []);
-
-  const handleCopy = async () => {
-    if (!selection) return;
-    try {
-      await navigator.clipboard.writeText(selection);
-      setCopiedSel(true);
-      setTimeout(() => setCopiedSel(false), 1500);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
-
-  const handleAsk = () => {
-    if (!selection || !onAskAbout) return;
-    onAskAbout(selection);
-    setSelection(null);
-    window.getSelection()?.removeAllRanges();
-  };
-
-  if (!selection) return null;
-
-  return (
-    <div
-      ref={toolbarRef}
-      className="fixed z-[9999] pointer-events-auto"
-      style={{ top: `${position.top}px`, left: `${position.left}px`, transform: 'translateX(-50%)' }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 8, scale: 0.92 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 8, scale: 0.92 }}
-        transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-        className="relative flex items-center gap-0.5 glass-panel rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)_inset] p-1.5"
-      >
-        {/* Arrow pointer */}
-        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-slate-800 border-r border-b border-glass-border" />
-
-        <button
-          type="button"
-          onClick={handleAsk}
-          className="relative flex items-center gap-2 px-3.5 py-2 text-[13px] font-semibold text-on-secondary bg-secondary hover:bg-secondary-container rounded-xl transition-all whitespace-nowrap shadow-[0_2px_8px_rgba(255,202,69,0.3),inset_0_1px_0_rgba(255,255,255,0.3)] active:scale-95"
-        >
-          <MessageSquare className="w-4 h-4" strokeWidth={2.5} />
-          Ask NyayaAI
-        </button>
-
-        <div className="w-px h-5 bg-glass-border mx-0.5" />
-
-        <button
-          type="button"
-          onClick={handleCopy}
-          className={`flex items-center gap-2 px-3 py-2 text-[13px] font-medium rounded-xl transition-all whitespace-nowrap active:scale-95 ${
-            copiedSel
-              ? 'text-emerald-400 bg-emerald-400/10 shadow-[0_0_12px_rgba(52,211,153,0.15)]'
-              : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
-          }`}
-        >
-          {copiedSel ? (
-            <Check className="w-4 h-4" strokeWidth={2.5} />
-          ) : (
-            <Copy className="w-4 h-4" strokeWidth={2} />
-          )}
-          {copiedSel ? 'Copied!' : 'Copy'}
-        </button>
-      </motion.div>
-    </div>
-  );
-}
+/* Markdown stripping lives in lib/text so copy, share, speech and PDF agree. */
 
 interface ActionButtonProps {
   label: string;
   onClick?: () => void;
   active?: boolean;
   activeClass?: string;
+  pressed?: boolean;
   children: ReactNode;
 }
 
-function ActionButton({ label, onClick, active, activeClass = 'text-secondary', children }: ActionButtonProps) {
+function ActionButton({ label, onClick, active, activeClass = 'text-gold', pressed, children }: ActionButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`p-1.5 rounded-lg transition-colors hover:bg-white/5 ${
-        active ? activeClass : 'text-on-surface-variant hover:text-on-surface'
+      aria-pressed={pressed}
+      className={`grid h-7 w-7 place-items-center rounded-md transition-colors duration-150 hover:bg-surface-2 ${
+        active ? activeClass : 'text-fg-subtle hover:text-fg-muted'
       }`}
     >
       {children}
@@ -216,14 +101,17 @@ function ActionButton({ label, onClick, active, activeClass = 'text-secondary', 
 
 interface MessageActionsProps {
   message: ChatMessage;
+  /** The question this answers, used for the PDF header. */
+  question?: string;
   onRegenerate?: () => void;
   onBranch?: () => void;
 }
 
-function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps) {
-  const [copied, setCopied] = useState<boolean>(false);
+function MessageActions({ message, question, onRegenerate, onBranch }: MessageActionsProps) {
+  const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
-  const [speaking, setSpeaking] = useState<boolean>(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [saving, setSaving] = useState(false);
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopKeepAlive = () => {
@@ -233,33 +121,51 @@ function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps
     }
   };
 
-  // Stop speech if this message unmounts
-  useEffect(() => () => {
-    stopKeepAlive();
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      stopKeepAlive();
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    },
+    [],
+  );
 
   const plainText = useMemo(() => toPlainText(message.content), [message.content]);
+  const spokenText = useMemo(() => toSpokenText(message.content), [message.content]);
+
+  const handleSavePdf = async () => {
+    setSaving(true);
+    try {
+      await exportAnswerToPdf({
+        question: question || 'Question not recorded',
+        answer: message.content,
+        sources: message.sources,
+      });
+    } catch (err) {
+      console.error('Could not build the PDF:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(plainText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1800);
     } catch (err) {
-      console.error('Failed to copy text: ', err);
+      console.error('Failed to copy text:', err);
     }
   };
 
   const handleShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'NyayaAI Answer', text: plainText });
+        await navigator.share({ title: 'NyayaAI answer', text: plainText });
         return;
       } catch {
-        /* user cancelled — fall through to copy */
+        /* cancelled — fall through to clipboard */
       }
     }
     handleCopy();
@@ -267,12 +173,8 @@ function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps
 
   const handleReadAloud = () => {
     const synth = window.speechSynthesis;
-    if (!synth) {
-      alert('Text-to-speech is not supported in this browser.');
-      return;
-    }
+    if (!synth) return;
 
-    // Toggle off if it's already reading.
     if (speaking || synth.speaking) {
       stopKeepAlive();
       synth.cancel();
@@ -280,68 +182,87 @@ function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps
       return;
     }
 
-    const text = plainText;
-    if (!text) return;
+    if (!spokenText) return;
+    synth.cancel();
 
-    synth.cancel(); // clear anything stuck in the queue
-
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(spokenText);
     utterance.lang = 'en-IN';
-    utterance.rate = 1;
-    utterance.pitch = 1;
 
-    // Prefer an English voice if the list is populated (loads async in Chrome).
     const voices = synth.getVoices();
     const preferred =
       voices.find((v) => /en[-_]IN/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
     if (preferred) utterance.voice = preferred;
 
-    utterance.onend = () => { stopKeepAlive(); setSpeaking(false); };
-    utterance.onerror = () => { stopKeepAlive(); setSpeaking(false); };
+    utterance.onend = () => {
+      stopKeepAlive();
+      setSpeaking(false);
+    };
+    utterance.onerror = () => {
+      stopKeepAlive();
+      setSpeaking(false);
+    };
 
     setSpeaking(true);
-    // Chrome pauses long utterances after ~15s; nudge it to keep going.
+    /* Chrome stalls long utterances; nudge it periodically. */
     stopKeepAlive();
     keepAliveRef.current = setInterval(() => {
-      if (!synth.speaking) { stopKeepAlive(); return; }
+      if (!synth.speaking) {
+        stopKeepAlive();
+        return;
+      }
       synth.pause();
       synth.resume();
     }, 9000);
 
-    // A tiny delay after cancel() improves reliability in Chrome.
     setTimeout(() => synth.speak(utterance), 60);
   };
 
   return (
-    <div className="flex items-center gap-0.5 mt-3 pt-2 border-t border-glass-border relative">
-      <ActionButton label={copied ? 'Copied!' : 'Copy'} onClick={handleCopy} active={copied} activeClass="text-emerald-400">
-        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+    <div className="mt-3 flex items-center gap-0.5 border-t border-line pt-2">
+      <ActionButton
+        label={copied ? 'Copied' : 'Copy answer'}
+        onClick={handleCopy}
+        active={copied}
+        activeClass="text-affirm"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </ActionButton>
 
       <ActionButton
-        label="Good response"
+        label="Helpful"
         onClick={() => setFeedback((f) => (f === 'up' ? null : 'up'))}
         active={feedback === 'up'}
+        activeClass="text-affirm"
+        pressed={feedback === 'up'}
       >
-        <ThumbsUp className="w-3.5 h-3.5" />
+        <ThumbsUp className="h-3.5 w-3.5" />
       </ActionButton>
 
       <ActionButton
-        label="Bad response"
+        label="Not helpful"
         onClick={() => setFeedback((f) => (f === 'down' ? null : 'down'))}
         active={feedback === 'down'}
-        activeClass="text-red-400"
+        activeClass="text-danger"
+        pressed={feedback === 'down'}
       >
-        <ThumbsDown className="w-3.5 h-3.5" />
+        <ThumbsDown className="h-3.5 w-3.5" />
       </ActionButton>
 
-      <ActionButton label="Share" onClick={handleShare}>
-        <Share2 className="w-3.5 h-3.5" />
+      <ActionButton label="Share answer" onClick={handleShare}>
+        <Share2 className="h-3.5 w-3.5" />
+      </ActionButton>
+
+      <ActionButton
+        label={saving ? 'Building PDF…' : 'Save as PDF, with citations'}
+        onClick={handleSavePdf}
+        active={saving}
+      >
+        <Download className="h-3.5 w-3.5" />
       </ActionButton>
 
       {onRegenerate && (
-        <ActionButton label="Regenerate" onClick={onRegenerate}>
-          <RefreshCw className="w-3.5 h-3.5" />
+        <ActionButton label="Ask again" onClick={onRegenerate}>
+          <RefreshCw className="h-3.5 w-3.5" />
         </ActionButton>
       )}
 
@@ -349,21 +270,15 @@ function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps
         label={speaking ? 'Stop reading' : 'Read aloud'}
         onClick={handleReadAloud}
         active={speaking}
-        activeClass="text-secondary"
+        pressed={speaking}
       >
-        {speaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+        {speaking ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
       </ActionButton>
 
       {onBranch && (
-        <ActionButton label="Branch in new chat" onClick={onBranch}>
-          <GitBranch className="w-3.5 h-3.5" />
+        <ActionButton label="Continue in a new conversation" onClick={onBranch}>
+          <GitBranch className="h-3.5 w-3.5" />
         </ActionButton>
-      )}
-
-      {message.sources && message.sources.length > 0 && (
-        <span className="ml-1.5 text-xs text-on-surface-variant/60 flex items-center gap-1">
-          <FileText className="w-3 h-3" /> {message.sources.length} source{message.sources.length > 1 ? 's' : ''}
-        </span>
       )}
     </div>
   );
@@ -371,81 +286,154 @@ function MessageActions({ message, onRegenerate, onBranch }: MessageActionsProps
 
 export interface ChatBubbleProps {
   message: ChatMessage;
+  /** The preceding question, carried through so an export can name it. */
+  question?: string;
   isStreaming?: boolean;
   onRegenerate?: () => void;
   onBranch?: () => void;
-  onAskAbout?: (text: string) => void;
 }
 
+/**
+ * Markdown mapping for answers. Statute headings pick up the label treatment so
+ * a long reply scans like a structured note rather than a wall of prose.
+ */
 const MarkdownComponents: Components = {
-  h1: ({node, ...props}: any) => <h1 className="text-lg font-bold text-on-surface mt-4 mb-2" {...props} />,
-  h2: ({node, ...props}: any) => <h2 className="text-base font-bold text-on-surface mt-3 mb-2" {...props} />,
-  h3: ({node, ...props}: any) => <h3 className="text-[13px] font-semibold text-secondary uppercase tracking-wide mt-3 mb-1.5" {...props} />,
-  h4: ({node, ...props}: any) => <h4 className="text-sm font-semibold text-on-surface mt-2 mb-1" {...props} />,
-  h5: ({node, ...props}: any) => <h5 className="text-sm font-semibold text-on-surface mt-2 mb-1" {...props} />,
-  h6: ({node, ...props}: any) => <h6 className="text-sm font-semibold text-on-surface mt-2 mb-1" {...props} />,
-  p: ({node, ...props}: any) => <p className="mb-1.5 text-on-surface-variant leading-[1.65]" {...props} />,
-  ul: ({node, ...props}: any) => <ul className="list-disc pl-5 space-y-1.5 my-3 marker:text-secondary text-on-surface-variant" {...props} />,
-  ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 space-y-1.5 my-3 marker:text-secondary marker:font-semibold text-on-surface-variant" {...props} />,
-  li: ({node, ...props}: any) => <li {...props} />,
-  strong: ({node, ...props}: any) => <strong className="font-semibold text-on-surface" {...props} />,
-  em: ({node, ...props}: any) => <em className="italic" {...props} />,
-  code: ({node, className, children, ...props}: any) => {
+  h1: ({ node, ...props }: any) => <h2 className="t-h3 text-fg" {...props} />,
+  h2: ({ node, ...props }: any) => <h2 className="t-h3 text-fg" {...props} />,
+  h3: ({ node, ...props }: any) => <h3 className="t-label lum-label text-gold" {...props} />,
+  h4: ({ node, ...props }: any) => <h4 className="t-ui text-fg" {...props} />,
+  h5: ({ node, ...props }: any) => <h5 className="t-ui text-fg" {...props} />,
+  h6: ({ node, ...props }: any) => <h6 className="t-ui text-fg" {...props} />,
+  hr: () => <hr className="divider my-4" />,
+  blockquote: ({ node, ...props }: any) => (
+    <blockquote className="statute text-fg-subtle italic" {...props} />
+  ),
+  code: ({ node, className, children, ...props }: any) => {
     const isInline = !String(children).includes('\n') && !className;
     return isInline ? (
-      <code className="bg-slate-800 text-secondary px-1.5 py-0.5 rounded text-xs font-mono" {...props}>{children}</code>
+      <code
+        className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.8125rem] text-gold-soft"
+        {...props}
+      >
+        {children}
+      </code>
     ) : (
-      <code className={`block bg-slate-800 p-3 rounded-lg overflow-x-auto text-sm my-3 font-mono text-secondary ${className || ''}`} {...props}>
+      <code
+        className={`block overflow-x-auto rounded-md bg-ink p-3 font-mono text-[0.8125rem] text-fg-muted ring-1 ring-inset ring-line ${className || ''}`}
+        {...props}
+      >
         {children}
       </code>
     );
   },
-  pre: ({node, ...props}: any) => <pre className="my-3 overflow-x-auto rounded-lg" {...props} />,
-  table: ({node, ...props}: any) => (
-    <div className="my-3 overflow-x-auto rounded-lg border border-glass-border">
-      <table className="w-full text-xs border-collapse" {...props} />
+  pre: ({ node, ...props }: any) => <pre className="overflow-x-auto" {...props} />,
+  table: ({ node, ...props }: any) => (
+    <div className="overflow-x-auto rounded-md border border-line">
+      <table className="w-full border-collapse text-[0.8125rem]" {...props} />
     </div>
   ),
-  thead: ({node, ...props}: any) => <thead className="bg-slate-800" {...props} />,
-  th: ({node, ...props}: any) => <th className="text-left font-semibold text-secondary px-3 py-2 border-b border-glass-border" {...props} />,
-  tbody: ({node, ...props}: any) => <tbody {...props} />,
-  tr: ({node, ...props}: any) => <tr className="border-b border-glass-border/40 last:border-0" {...props} />,
-  td: ({node, ...props}: any) => <td className="px-3 py-2 text-on-surface align-top" {...props} />,
-  a: ({node, ...props}: any) => <a className="text-sky-400 underline hover:text-sky-300" target="_blank" rel="noopener noreferrer" {...props} />
+  thead: ({ node, ...props }: any) => <thead className="bg-surface-2" {...props} />,
+  th: ({ node, ...props }: any) => (
+    <th
+      className="t-label border-b border-line px-3 py-2 text-left text-fg-subtle"
+      {...props}
+    />
+  ),
+  tr: ({ node, ...props }: any) => <tr className="border-b border-line last:border-0" {...props} />,
+  td: ({ node, ...props }: any) => <td className="px-3 py-2 align-top text-fg-muted" {...props} />,
 };
+
+/** Citation chip with an expandable snippet of the retrieved passage. */
+function Citation({ source, index }: { source: string | ChatSource; index: number }) {
+  const [open, setOpen] = useState(false);
+
+  if (isWebSource(source)) {
+    const webSource = source as ChatSource;
+    return (
+      <a
+        href={webSource.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={webSource.text_snippet || webSource.url}
+        className="chip"
+      >
+        <Globe className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <span className="max-w-[11rem] truncate">{formatSourceLabel(source)}</span>
+        <ExternalLink className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+      </a>
+    );
+  }
+
+  const docSource = typeof source === 'object' && source !== null ? (source as ChatSource) : null;
+  const snippet = docSource?.text_snippet;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => snippet && setOpen((v) => !v)}
+        aria-expanded={snippet ? open : undefined}
+        disabled={!snippet}
+        className={`chip font-mono ${open ? 'chip-active' : ''} ${snippet ? '' : 'cursor-default'}`}
+      >
+        <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
+        {formatSourceLabel(source)}
+      </button>
+
+      <AnimatePresence>
+        {open && snippet && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.14 }}
+            className="overlay-panel absolute bottom-full left-0 z-30 mb-2 w-[19rem] max-w-[calc(100vw-3rem)] p-3"
+          >
+            <p className="t-label mb-1.5 text-fg-subtle">Retrieved passage {index + 1}</p>
+            <p className="text-[0.8125rem] leading-relaxed text-fg-muted">{snippet}</p>
+            {docSource?.page_number && (
+              <p className="t-mono mt-2 text-fg-subtle">page {docSource.page_number}</p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 const ChatBubble = memo(function ChatBubble({
   message,
+  question,
   isStreaming = false,
   onRegenerate,
   onBranch,
-  onAskAbout
 }: ChatBubbleProps) {
   const isUser = message.role === 'user';
-  const showActions = !isUser && !isStreaming && !!message.content && message.content.trim().length > 0;
-  const [expandedSource, setExpandedSource] = useState<number | null>(null);
+  const hasContent = Boolean(message.content && message.content.trim().length > 0);
+  const showActions = !isUser && !isStreaming && hasContent;
 
   if (isUser) {
     return (
-      <div className="self-end max-w-[85%] ml-auto mb-4">
-        <div className="bg-slate-800 rounded-lg p-5 rounded-tr-none text-on-surface">
-          <p className="whitespace-pre-wrap">{message.content}</p>
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-lg bg-surface-2 px-4 py-2.5 ring-1 ring-inset ring-line">
+          <p className="whitespace-pre-wrap text-[0.9375rem] leading-relaxed text-fg">
+            {message.content}
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="self-start w-full mb-6">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-8 h-8 rounded-full overflow-hidden bg-white/5 border border-glass-border flex items-center justify-center shrink-0">
-          <img src={logo} alt="NyayaAI" className="w-full h-full object-cover" />
-        </div>
-        <span className="font-label-caps text-label-caps text-secondary">NyayaAI Analysis</span>
+    <div>
+      <div className="mb-2.5 flex items-center gap-2">
+        <BrandMark size="sm" />
+        <span className="t-label text-fg-subtle">NyayaAI</span>
         <SourceBadge sourceType={message.sourceType} />
       </div>
-      <div className="glass-panel rounded-lg p-6 border-l-4 border-l-secondary ai-think-glow text-on-surface-variant">
-        <div className="text-sm chat-bubble-content">
+
+      <div className="statute" data-answer>
+        <div className={`prose-answer ${isStreaming && !hasContent ? 'stream-caret' : ''}`}>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSanitize]}
@@ -453,75 +441,28 @@ const ChatBubble = memo(function ChatBubble({
           >
             {message.content}
           </ReactMarkdown>
-          {!isStreaming && onAskAbout && (
-            <TextSelectionToolbar onAskAbout={onAskAbout} />
-          )}
         </div>
 
         {message.sources && message.sources.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-glass-border">
-            {message.sources.map((source: string | ChatSource, i: number) => {
-              if (isWebSource(source)) {
-                const webSource = source as ChatSource;
-                return (
-                  <a
-                    key={i}
-                    href={webSource.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={webSource.text_snippet || webSource.url}
-                    className="px-3 py-1 rounded-full bg-slate-800 text-on-surface-variant font-citation text-citation cursor-pointer hover:bg-slate-700 transition-colors flex items-center gap-1.5"
-                  >
-                    <Globe className="w-3 h-3" />
-                    <span className="truncate max-w-[150px]">{formatSourceLabel(source)}</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                );
-              }
-
-              const docSource = typeof source === 'object' && source !== null ? (source as ChatSource) : null;
-
-              return (
-                <div key={i} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedSource(expandedSource === i ? null : i)}
-                    className={`px-3 py-1 rounded-full font-citation text-citation cursor-pointer transition-colors flex items-center gap-1.5 ${
-                      expandedSource === i
-                        ? 'bg-gold-light text-on-secondary-container hover:bg-secondary'
-                        : 'bg-slate-800 text-on-surface-variant hover:bg-slate-700'
-                    }`}
-                  >
-                    <FileText className="w-3 h-3" />
-                    <span>{formatSourceLabel(source)}</span>
-                  </button>
-                  <AnimatePresence>
-                    {expandedSource === i && docSource?.text_snippet && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 4, scale: 0.96 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute bottom-full left-0 mb-2 z-30 w-72 p-3 rounded-xl border border-glass-border bg-slate-800 shadow-xl backdrop-blur-xl text-left"
-                      >
-                        <p className="text-xs text-on-surface-variant leading-relaxed">{docSource.text_snippet}</p>
-                        <div className="mt-2 flex items-center gap-1.5 text-on-surface-variant/70">
-                          <FileText className="w-3 h-3" />
-                          <span className="text-[10px]">Page {docSource.page_number || 'N/A'}</span>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
+          <div className="mt-4">
+            <p className="t-label mb-2 text-fg-subtle">
+              {message.sources.length} source{message.sources.length > 1 ? 's' : ''}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {message.sources.map((source, i) => (
+                <Citation key={i} source={source} index={i} />
+              ))}
+            </div>
           </div>
         )}
 
         {showActions && (
-          <div className="mt-2">
-             <MessageActions message={message} onRegenerate={onRegenerate} onBranch={onBranch} />
-          </div>
+          <MessageActions
+            message={message}
+            question={question}
+            onRegenerate={onRegenerate}
+            onBranch={onBranch}
+          />
         )}
       </div>
     </div>

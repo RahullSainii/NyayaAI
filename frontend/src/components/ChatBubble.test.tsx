@@ -6,6 +6,7 @@ import ChatBubble from './ChatBubble';
 vi.mock('lucide-react', () => ({
   Copy: () => <span data-testid="icon-copy" />,
   Check: () => <span data-testid="icon-check" />,
+  Download: () => <span data-testid="icon-download" />,
   ThumbsUp: () => <span data-testid="icon-thumbsup" />,
   ThumbsDown: () => <span data-testid="icon-thumbsdown" />,
   FileText: () => <span data-testid="icon-filetext" />,
